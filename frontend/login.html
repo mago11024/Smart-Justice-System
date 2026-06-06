@@ -125,7 +125,8 @@
           }
           localStorage.setItem("auth_token", data.access_token);
           localStorage.setItem("auth_user", JSON.stringify(data.user || {}));
-          window.location.href = "/";
+          const redirect = new URLSearchParams(window.location.search).get("redirect") || "/";
+          window.location.href = redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/";
         } catch (err) {
           error.textContent = err.message || "登录失败";
         } finally {

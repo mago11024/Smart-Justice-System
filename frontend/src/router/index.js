@@ -74,4 +74,17 @@ const router = createRouter({
   routes,
 })
 
+function hasAuthToken() {
+  return Boolean(localStorage.getItem('auth_token'))
+}
+
+router.beforeEach((to, from, next) => {
+  if (!hasAuthToken()) {
+    const redirect = encodeURIComponent(to.fullPath || '/')
+    window.location.replace(`/login.html?redirect=${redirect}`)
+    return
+  }
+  next()
+})
+
 export default router
