@@ -1,0 +1,472 @@
+/* 全局样式 - 对齐原型设计 */
+:root {
+  --bg: #F7F8FA;
+  --surface: #FFFFFF;
+  --text: #1A1D26;
+  --text-secondary: #6E7687;
+  --text-tertiary: #9CA3B0;
+  --border: #EBEDF0;
+  --accent: #6366F1;
+  --accent-soft: rgba(99,102,241,0.06);
+  --red: #EF4444;
+  --red-soft: rgba(239,68,68,0.06);
+  --orange: #F59E0B;
+  --orange-soft: rgba(245,158,11,0.06);
+  --green: #10B981;
+  --green-soft: rgba(16,185,129,0.06);
+  --blue: #3B82F6;
+  --blue-soft: rgba(59,130,246,0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: Inter, -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 暗色主题 */
+html.dark {
+  --bg: #0C0C0D;
+  --surface: #161618;
+  --text: #EDEDEF;
+  --text-secondary: #9D9DA3;
+  --text-tertiary: #69696F;
+  --border: #252528;
+  --accent: #7C7CF0;
+  --accent-soft: rgba(124,124,240,0.1);
+  --red: #F97078;
+  --red-soft: rgba(249,112,120,0.1);
+  --orange: #F0A040;
+  --orange-soft: rgba(240,160,64,0.1);
+  --green: #45C98A;
+  --green-soft: rgba(69,201,138,0.1);
+  --blue: #5E9EFF;
+  --blue-soft: rgba(94,158,255,0.1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D0D4DD; border-radius: 3px; }
+html.dark ::-webkit-scrollbar-thumb { background: #2E2E32; }
+
+/* Element Plus 主题覆盖 */
+.el-menu { border-right: none !important; }
+.el-button--primary {
+  --el-button-bg-color: var(--accent);
+  --el-button-border-color: var(--accent);
+  --el-button-text-color: #fff;
+}
+.el-button--primary:hover {
+  --el-button-hover-bg-color: var(--accent);
+  --el-button-hover-border-color: var(--accent);
+  filter: brightness(1.08);
+}
+.el-button--primary:active {
+  --el-button-active-bg-color: var(--accent);
+  --el-button-active-border-color: var(--accent);
+  filter: brightness(0.92);
+}
+
+/* ========================================
+   暗色下 Element Plus 微调
+   ======================================== */
+
+/* --- Dialog --- */
+html.dark .el-dialog {
+  --el-dialog-bg-color: var(--surface);
+  --el-dialog-title-color: var(--text);
+}
+html.dark .el-dialog__header {
+  border-bottom-color: var(--border);
+}
+html.dark .el-dialog__body {
+  color: var(--text);
+}
+html.dark .el-dialog__footer {
+  border-top-color: var(--border);
+}
+
+/* --- Input --- */
+html.dark .el-input__wrapper {
+  background-color: var(--surface);
+  box-shadow: 0 0 0 1px var(--border) inset;
+}
+html.dark .el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--text-tertiary) inset;
+}
+html.dark .el-input__wrapper.is-focus,
+html.dark .el-input__wrapper:focus-within {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+html.dark .el-input__wrapper:active {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+html.dark .el-input__inner {
+  color: var(--text);
+}
+html.dark .el-input__inner::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* --- Select（el-select__wrapper 是 2.9+ 新结构） --- */
+html.dark .el-select .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+html.dark .el-select__wrapper {
+  background-color: var(--surface);
+  box-shadow: 0 0 0 1px var(--border) inset;
+}
+html.dark .el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--text-tertiary) inset;
+}
+html.dark .el-select__wrapper.is-focused,
+html.dark .el-select__wrapper:focus-within {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+html.dark .el-select__wrapper.is-disabled {
+  background-color: var(--bg);
+  opacity: 0.5;
+}
+html.dark .el-select-dropdown {
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+html.dark .el-select-dropdown__item {
+  color: var(--text);
+}
+html.dark .el-select-dropdown__item.hover,
+html.dark .el-select-dropdown__item:hover {
+  background-color: var(--bg);
+}
+html.dark .el-select-dropdown__item.selected {
+  color: var(--accent);
+}
+
+/* --- Date Picker --- */
+html.dark .el-date-picker {
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+
+/* --- Button --- */
+html.dark .el-button {
+  --el-button-bg-color: var(--surface);
+  --el-button-border-color: var(--border);
+  --el-button-text-color: var(--text);
+}
+html.dark .el-button:hover {
+  --el-button-hover-bg-color: var(--bg);
+  --el-button-hover-border-color: var(--text-tertiary);
+  --el-button-hover-text-color: var(--text);
+}
+html.dark .el-button:active {
+  --el-button-active-bg-color: var(--border);
+  --el-button-active-border-color: var(--text-tertiary);
+  --el-button-active-text-color: var(--text);
+}
+html.dark .el-button:focus-visible {
+  --el-button-outline-color: var(--accent);
+}
+/* primary button — keep accent across states in dark */
+html.dark .el-button--primary {
+  --el-button-bg-color: var(--accent);
+  --el-button-border-color: var(--accent);
+  --el-button-text-color: #fff;
+}
+html.dark .el-button--primary:hover {
+  --el-button-hover-bg-color: var(--accent);
+  --el-button-hover-border-color: var(--accent);
+  filter: brightness(1.12);
+}
+html.dark .el-button--primary:active {
+  --el-button-active-bg-color: var(--accent);
+  --el-button-active-border-color: var(--accent);
+  filter: brightness(0.88);
+}
+
+/* --- Table --- */
+html.dark .el-table {
+  --el-table-bg-color: var(--surface);
+  --el-table-tr-bg-color: var(--surface);
+  --el-table-header-bg-color: var(--bg);
+  --el-table-border-color: var(--border);
+  --el-table-text-color: var(--text);
+  --el-table-row-hover-bg-color: var(--bg);
+}
+
+/* --- Form --- */
+html.dark .el-form-item__label {
+  color: var(--text-secondary);
+}
+
+/* --- Tag --- */
+html.dark .el-tag {
+  --el-tag-bg-color: var(--bg);
+  --el-tag-border-color: var(--border);
+  --el-tag-text-color: var(--text-secondary);
+}
+
+/* --- Message / Notification --- */
+html.dark .el-message,
+html.dark .el-notification {
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+
+/* --- Tabs --- */
+html.dark .el-tabs__header {
+  border-bottom-color: var(--border);
+}
+html.dark .el-tabs__item {
+  color: var(--text-secondary);
+}
+html.dark .el-tabs__item.is-active,
+html.dark .el-tabs__item:hover {
+  color: var(--accent);
+}
+
+/* --- Pagination --- */
+html.dark .el-pagination .el-pager li,
+html.dark .el-pagination button {
+  background-color: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+html.dark .el-pagination .el-pager li.is-active {
+  background-color: var(--accent);
+  color: #fff;
+}
+html.dark .el-pagination .el-pager li:hover,
+html.dark .el-pagination button:hover {
+  color: var(--accent);
+}
+html.dark .el-pagination .el-pager li:active {
+  background-color: var(--border);
+}
+
+/* --- Menu --- */
+html.dark .el-menu {
+  --el-menu-bg-color: var(--surface);
+  --el-menu-text-color: var(--text-secondary);
+  --el-menu-hover-bg-color: var(--bg);
+  --el-menu-active-color: var(--accent);
+  --el-menu-border-color: var(--border);
+}
+html.dark .el-menu-item.is-active {
+  --el-menu-active-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Checkbox --- */
+html.dark .el-checkbox {
+  --el-checkbox-text-color: var(--text);
+  --el-checkbox-checked-text-color: var(--text);
+  --el-checkbox-checked-bg-color: var(--accent);
+  --el-checkbox-checked-border-color: var(--accent);
+  --el-checkbox-input-border-color-hover: var(--accent);
+}
+
+/* --- Radio --- */
+html.dark .el-radio {
+  --el-radio-text-color: var(--text);
+  --el-radio-checked-text-color: var(--accent);
+  --el-radio-checked-bg-color: var(--accent);
+  --el-radio-checked-border-color: var(--accent);
+  --el-radio-input-border-color-hover: var(--accent);
+}
+
+/* --- Cascader --- */
+html.dark .el-cascader__dropdown {
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+html.dark .el-cascader-node {
+  color: var(--text);
+}
+html.dark .el-cascader-node:hover,
+html.dark .el-cascader-node.is-active,
+html.dark .el-cascader-node.is-selectable.in-checked-path {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* --- Dropdown --- */
+html.dark .el-dropdown-menu {
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+html.dark .el-dropdown-menu__item {
+  color: var(--text);
+}
+html.dark .el-dropdown-menu__item:hover,
+html.dark .el-dropdown-menu__item:focus {
+  background-color: var(--bg);
+  color: var(--accent);
+}
+
+/* --- Time / Date picker panel --- */
+html.dark .el-picker-panel {
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+html.dark .el-date-table td.available:hover {
+  color: var(--accent);
+}
+html.dark .el-date-table td.today span {
+  color: var(--accent);
+}
+html.dark .el-date-table td.current:not(.disabled) span {
+  background-color: var(--accent);
+  color: #fff;
+}
+
+/* --- Input Number --- */
+html.dark .el-input-number {
+  --el-input-number-bg-color: var(--surface);
+}
+html.dark .el-input-number__decrease,
+html.dark .el-input-number__increase {
+  background-color: var(--bg);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+html.dark .el-input-number__decrease:hover,
+html.dark .el-input-number__increase:hover {
+  color: var(--accent);
+}
+
+/* --- Switch --- */
+html.dark .el-switch {
+  --el-switch-on-color: var(--accent);
+  --el-switch-off-color: var(--border);
+}
+
+/* --- Alert --- */
+html.dark .el-alert {
+  --el-alert-bg-color: var(--bg);
+  --el-alert-border-color: var(--border);
+}
+html.dark .el-alert__title {
+  color: var(--text);
+}
+
+/* --- Radio Button (different from Radio) --- */
+html.dark .el-radio-button__inner {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+html.dark .el-radio-button__inner:hover {
+  color: var(--accent);
+}
+html.dark .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* --- Textarea --- */
+html.dark .el-textarea__inner {
+  background-color: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+html.dark .el-textarea__inner::placeholder {
+  color: var(--text-tertiary);
+}
+html.dark .el-textarea__inner:focus {
+  border-color: var(--accent);
+}
+
+/* --- Popconfirm / Popover --- */
+html.dark .el-popconfirm,
+html.dark .el-popover {
+  background-color: var(--surface);
+  border-color: var(--border);
+}
+html.dark .el-popconfirm__title,
+html.dark .el-popover__title {
+  color: var(--text);
+}
+
+/* --- Descriptions（对话框内的表格） --- */
+html.dark .el-descriptions {
+  --el-descriptions-item-bordered-label-background: transparent;
+}
+html.dark .el-descriptions__body {
+  background-color: transparent;
+}
+html.dark .el-descriptions__title {
+  color: var(--text);
+}
+html.dark .el-descriptions__table.is-bordered {
+  border-color: var(--border);
+}
+html.dark .el-descriptions__cell.is-bordered-label {
+  color: var(--text-tertiary);
+  background-color: transparent;
+  border-color: var(--border) !important;
+}
+html.dark .el-descriptions__cell.is-bordered-content {
+  color: var(--text);
+  background-color: transparent;
+  border-color: var(--border) !important;
+}
+
+/* --- Result (AI 分析结果 / 错误页面) --- */
+html.dark .el-result__title {
+  color: var(--text);
+}
+html.dark .el-result__subtitle {
+  color: var(--text-secondary);
+}
+
+/* --- Drawer --- */
+html.dark .el-drawer {
+  background-color: var(--surface);
+}
+
+/* --- Skeleton --- */
+html.dark .el-skeleton__item {
+  background: var(--border);
+}
+
+/* --- Loading 遮罩（暗色下必须是暗底，不能白色一闪） --- */
+html.dark .el-loading-mask {
+  background-color: rgba(0, 0, 0, 0.65) !important;
+}
+
+/* --- Upload 拖拽区 --- */
+html.dark .el-upload-dragger {
+  background-color: var(--bg);
+  border-color: var(--border);
+}
+html.dark .el-upload-dragger:hover {
+  border-color: var(--accent);
+}
+html.dark .el-upload-dragger.is-dragover {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+}
+html.dark .el-upload-dragger .el-icon--upload {
+  color: var(--text-tertiary);
+}
+html.dark .el-upload-dragger .el-upload__text {
+  color: var(--text-secondary);
+}
+html.dark .el-upload-dragger .el-upload__text em {
+  color: var(--accent);
+}
+html.dark .el-upload__tip {
+  color: var(--text-tertiary);
+}

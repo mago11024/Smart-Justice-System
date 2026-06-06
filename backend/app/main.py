@@ -1,0 +1,57 @@
+"""案件驾驶舱 FastAPI 入口"""
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.database import engine, Base
+from app.routers import cases, lawyers, stats, notifications, documents, ai, settings, events
+
+app = FastAPI(title="案件驾驶舱 API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(cases.router)
+app.include_router(lawyers.router)
+app.include_router(stats.router)
+app.include_router(notifications.router)
+app.include_router(documents.router)
+app.include_router(ai.router)
+app.include_router(settings.router)
+app.include_router(events.router)
+
+
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
+
+    # SQLite 自动迁移：补充 create_all 无法追加的列
+    try:
+        import sqlite3, os
+        db_path = os.path.join(os.path.dirname(__file__), "..", "smart_justice.db")
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
+            for stmt in [
+                "ALTER TABLE notifications ADD COLUMN document_id INTEGER REFERENCES case_documents(id)",
+                "ALTER TABLE case_documents ADD COLUMN ai_match_result TEXT",
+                "ALTER TABLE case_documents ADD COLUMN ai_progress TEXT DEFAULT ''",
+            ]:
+                try:
+                    conn.execute(stmt)
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # 列已存在
+            conn.close()
+    except Exception:
+        pass
+
+    # 从 config.json 同步 AI 引擎配置到环境变量
+    try:
+        from app.routers.settings import _load_config, _sync_env
+        config = _load_config()
+        _sync_env(config)
+    except Exception:
+        pass
