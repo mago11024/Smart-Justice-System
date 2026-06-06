@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>案件驾驶舱</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+
+:root{
+  --bg:#F7F8FA;
+  --surface:#FFFFFF;
+  --text:#1A1D26;
+  --text-secondary:#6E7687;
+  --text-tertiary:#9CA3B0;
+  --border:#EBEDF0;
+  --border-hover:#D0D4DD;
+
+  --primary:#1E293B;
+  --primary-light:#334155;
+  --accent:#6366F1;
+  --accent-soft:rgba(99,102,241,0.06);
+  --accent-border:rgba(99,102,241,0.15);
+  --accent-gradient:linear-gradient(135deg,#6366F1,#8B5CF6);
+
+  --red:#EF4444;
+  --red-soft:rgba(239,68,68,0.06);
+  --orange:#F59E0B;
+  --orange-soft:rgba(245,158,11,0.06);
+  --green:#10B981;
+  --green-soft:rgba(16,185,129,0.06);
+  --blue:#3B82F6;
+  --blue-soft:rgba(59,130,246,0.06);
+
+  --radius:12px;
+  --radius-sm:8px;
+  --shadow-sm:0 1px 2px rgba(0,0,0,0.03),0 1px 1px rgba(0,0,0,0.02);
+  --shadow:0 1px 3px rgba(0,0,0,0.04),0 2px 4px rgba(0,0,0,0.02);
+  --shadow-md:0 4px 12px rgba(0,0,0,0.04),0 2px 4px rgba(0,0,0,0.02);
+  --shadow-lg:0 8px 24px rgba(0,0,0,0.05);
+
+  --font:Inter,-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono","Fira Code","Consolas",monospace;
+}
+
+body{
+  font-family:var(--font);
+  background:var(--bg);
+  color:var(--text);
+  height:100vh;overflow:hidden;
+  font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#D0D4DD;border-radius:3px}
+
+/* ===== SIDEBAR ===== */
+.layout{display:flex;height:100vh}
+.sidebar{
+  width:240px;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;flex-shrink:0;
+}
+.sb-head{display:flex;align-items:center;gap:10px;padding:20px 20px 16px}
+.sb-icon{width:32px;height:32px;border-radius:8px;background:var(--accent-gradient);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700}
+.sb-title{font-size:15px;font-weight:700;letter-spacing:-0.02em}
+.sb-version{font-size:10px;color:var(--text-tertiary);font-weight:500;padding:2px 6px;border-radius:4px;background:var(--border);margin-left:auto;margin-top:2px}
+
+.sb-nav{flex:1;padding:8px 12px;display:flex;flex-direction:column;gap:2px}
+.sb-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);transition:all 0.12s;border:none;background:none;font-family:inherit;text-align:left;width:100%}
+.sb-item:hover{color:var(--text);background:var(--bg)}
+.sb-item.active{color:var(--accent);background:var(--accent-soft)}
+.sb-item .badge{margin-left:auto;background:var(--red-soft);color:var(--red);font-size:10px;font-weight:600;padding:1px 7px;border-radius:10px}
+.sb-item .icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+
+.sb-foot{padding:12px;border-top:1px solid var(--border)}
+.sb-user{display:flex;align-items:center;gap:10px;padding:8px}
+.sb-av{width:28px;height:28px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.sb-un{font-size:12px;font-weight:600}
+.sb-ur{font-size:11px;color:var(--text-tertiary)}
+.sb-user select{margin-left:auto;background:none;border:none;color:var(--text-tertiary);font-size:11px;cursor:pointer;outline:none;font-family:inherit}
+
+/* ===== MAIN ===== */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+.topbar{
+  height:56px;display:flex;align-items:center;
+  padding:0 32px;border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.tb-search{position:relative;width:320px}
+.tb-search input{
+  width:100%;padding:8px 14px 8px 36px;background:var(--bg);
+  border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);
+  font-size:13px;outline:none;transition:all 0.2s;font-family:inherit;
+}
+.tb-search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.tb-search input::placeholder{color:var(--text-tertiary)}
+.tb-search .ico{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);font-size:13px;pointer-events:none}
+
+.tb-spacer{flex:1}
+.tb-actions{display:flex;align-items:center;gap:8px}
+.tb-btn{
+  padding:6px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:500;
+  cursor:pointer;font-family:inherit;transition:all 0.12s;
+}
+.tb-btn:hover{border-color:var(--border-hover);color:var(--text)}
+.tb-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.tb-btn.primary:hover{opacity:0.9}
+
+/* ===== CONTENT ===== */
+.content{
+  flex:1;overflow-y:auto;padding:28px 32px;
+  max-width:1280px;margin:0 auto;width:100%;
+}
+
+/* ===== HEADER ===== */
+.header{margin-bottom:28px}
+.header h1{font-size:26px;font-weight:700;letter-spacing:-0.03em;color:var(--text)}
+.header-meta{display:flex;align-items:center;gap:16px;margin-top:6px}
+.header-meta span{font-size:13px;color:var(--text-secondary)}
+.header-meta .hm-dot{width:4px;height:4px;border-radius:50%;background:var(--text-tertiary)}
+.header-meta .hm-alert{color:var(--red);font-weight:500}
+
+/* ===== STATS ===== */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:28px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;transition:all 0.2s;cursor:pointer}
+.stat:hover{border-color:var(--border-hover);box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.stat .st-n{font-size:32px;font-weight:700;letter-spacing:-0.04em;line-height:1.1}
+.stat .st-l{font-size:13px;color:var(--text-secondary);margin-top:4px}
+.stat .st-s{font-size:11px;color:var(--text-tertiary);margin-top:2px}
+.stat.alert .st-n{color:var(--red)}
+.stat.warn .st-n{color:var(--orange)}
+.stat .st-bar{height:3px;border-radius:2px;background:var(--border);margin-top:10px;overflow:hidden}
+.stat .st-fill{height:100%;border-radius:2px;transition:width 0.3s}
+.stat .st-fill.gr{background:var(--green);width:75%}
+.stat .st-fill.og{background:var(--orange);width:45%}
+.stat .st-fill.rd{background:var(--red);width:60%}
+.stat .st-fill.bl{background:var(--accent);width:30%}
+
+/* ===== VIEW TOGGLE ===== */
+.vrow{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.vt{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+.vt button{padding:6px 14px;font-size:12px;font-weight:500;border:none;background:transparent;color:var(--text-secondary);cursor:pointer;font-family:inherit;transition:all 0.12s}
+.vt button:hover{color:var(--text)}
+.vt button.active{background:var(--primary);color:#fff}
+
+.vb{display:none;align-items:center;gap:8px;padding:5px 12px;background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);font-size:12px;color:var(--accent)}
+.vb.show{display:flex}
+.vb .bn{font-weight:600}
+.vb button{padding:4px 10px;border-radius:4px;border:none;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;transition:all 0.12s}
+.vb .go{background:var(--accent);color:#fff}
+.vb .go:hover{opacity:0.85}
+.vb .cl{background:var(--surface);color:var(--text-secondary)}
+.vb .cl:hover{color:var(--text)}
+
+.vi{font-size:12px;color:var(--text-tertiary);margin-left:auto}
+
+/* ===== SECTIONS ===== */
+.flow{display:flex;flex-direction:column;gap:6px}
+
+.sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:box-shadow 0.2s}
+.sec:hover{box-shadow:var(--shadow)}
+
+.sec-hd{display:flex;align-items:center;padding:14px 20px;cursor:pointer;user-select:none;transition:background 0.12s;gap:8px}
+.sec-hd:hover{background:#FAFBFC}
+.sec.collapsed .sec-hd{border-bottom:none}
+
+.hdl{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.hd-arr{font-size:9px;color:var(--text-tertiary);transition:transform 0.15s;flex-shrink:0}
+.sec.collapsed .hd-arr{transform:rotate(-90deg)}
+.hd-l{font-size:15px;font-weight:600}
+.hd-c{font-size:13px;color:var(--text-tertiary);font-weight:400}
+.hd-b{font-size:11px;padding:2px 10px;border-radius:4px;font-weight:500}
+.hd-b.rd{color:var(--red);background:var(--red-soft)}
+.hd-b.og{color:var(--orange);background:var(--orange-soft)}
+
+.hd-act{display:flex;gap:4px;flex-shrink:0}
+.hd-btn{font-size:11px;font-weight:500;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;font-family:inherit;transition:all 0.12s;white-space:nowrap}
+.hd-btn:hover{color:var(--accent);border-color:var(--accent-border);background:var(--accent-soft)}
+.hd-btn.pr{background:var(--accent);border-color:var(--accent);color:#fff}
+.hd-btn.pr:hover{opacity:0.9}
+
+.sec-sum{display:none;padding:12px 20px 14px;font-size:12px;color:var(--text-secondary);gap:12px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center}
+.sec.collapsed .sec-sum{display:flex}
+
+/* ===== CASE ROW ===== */
+.row{display:flex;align-items:center;padding:12px 20px;gap:14px;border-top:1px solid var(--border);transition:background 0.1s;cursor:pointer;position:relative}
+.row:first-of-type{border-top:none}
+.row:hover{background:#FAFBFC}
+.row.sel{background:var(--accent-soft)}
+.row::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px}
+.row.rd::before{background:var(--red)}
+.row.og::before{background:var(--orange)}
+
+.cb{width:18px;height:18px;border-radius:5px;border:1.5px solid #D0D4DD;cursor:pointer;flex-shrink:0;transition:all 0.12s;background:transparent;display:flex;align-items:center;justify-content:center}
+.cb:hover{border-color:var(--accent)}
+.cb.chk{background:var(--accent);border-color:var(--accent)}
+.cb.chk::after{content:'';width:5px;height:8px;border:solid #fff;border-width:0 1.5px 1.5px 0;transform:rotate(45deg);position:absolute;top:2px}
+
+.rbd{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.r1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rn{font-size:15px;font-weight:600;color:var(--text)}
+.rr{font-size:12px;color:var(--text-tertiary);font-family:var(--mono)}
+.rs{font-size:11px;font-weight:500;padding:1px 8px;border-radius:5px}
+.rs.rd{color:var(--red);background:var(--red-soft)}
+.rs.og{color:var(--orange);background:var(--orange-soft)}
+.rs.gr{color:var(--green);background:var(--green-soft)}
+.rs.bl{color:var(--blue);background:var(--blue-soft)}
+
+.r2{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--text-secondary)}
+.rp{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
+.rdl{white-space:nowrap}
+.rdl.rd{color:var(--red)}
+.rdl.og{color:var(--orange)}
+.rh{color:var(--text-tertiary);font-size:11px}
+
+.rrt{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.rsi{font-size:11px;color:var(--text-tertiary);padding:4px 10px;border-radius:6px;background:var(--bg);display:flex;align-items:center;gap:5px}
+.rsi .sdot{width:6px;height:6px;border-radius:50%}
+
+.rlr{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.rav{width:26px;height:26px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
+.rln{font-size:13px;font-weight:500;color:var(--text-secondary)}
+
+.rq{display:flex;gap:2px;flex-shrink:0;opacity:0;transition:opacity 0.12s}
+.row:hover .rq{opacity:1}
+.rqb{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text-tertiary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all 0.12s;font-family:inherit}
+.rqb:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
+/* ===== FLAT VIEW ===== */
+.flat{display:flex;flex-direction:column;gap:4px}
+.flat-f{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}
+.fli{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);font-family:inherit;transition:all 0.15s;white-space:nowrap}
+.fli:hover{border-color:var(--accent);color:var(--accent)}
+.fli.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+.flat-it{display:flex;align-items:center;padding:10px 16px;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:all 0.12s}
+.flat-it:hover{border-color:var(--border-hover);box-shadow:var(--shadow-sm)}
+.flat-it.sel{background:var(--accent-soft);border-color:var(--accent-border)}
+.ft{font-size:11px;font-weight:500;padding:2px 8px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+
+/* ===== DIFY-STYLE ACCENT DETAILS ===== */
+.accent-glow{background:var(--accent-gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.gradient-line{height:2px;background:var(--accent-gradient);border-radius:1px;margin:0;border:none}
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sb-head">
+      <div class="sb-icon">律</div>
+      <span class="sb-title">案件驾驶舱</span>
+      <span class="sb-version">v1.0</span>
+    </div>
+    <nav class="sb-nav">
+      <button class="sb-item active"><span class="icon">◇</span> 案件总览</button>
+      <button class="sb-item"><span class="icon">◎</span> 提醒中心 <span class="badge">3</span></button>
+      <button class="sb-item"><span class="icon">◈</span> 知识搜索</button>
+      <button class="sb-item"><span class="icon">▽</span> 客户报告</button>
+    </nav>
+    <div class="sb-foot">
+      <div class="sb-user">
+        <span class="sb-av">张</span>
+        <div><div class="sb-un">张明</div><div class="sb-ur">主任</div></div>
+        <select><option selected>团队总览</option><option>个人视角</option></select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <div class="tb-search">
+        <span class="ico">⌕</span>
+        <input type="text" placeholder="搜索案号、当事人、案由…">
+      </div>
+      <div class="tb-spacer"></div>
+      <div class="tb-actions">
+        <button class="tb-btn">+ 新建案件</button>
+        <button class="tb-btn">导出</button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- Header -->
+      <div class="header">
+        <h1>案件总览</h1>
+        <div class="header-meta">
+          <span>共 20 件进行中</span>
+          <span class="hm-dot"></span>
+          <span>超期 <span class="hm-alert">2</span></span>
+          <span class="hm-dot"></span>
+          <span>本周开庭 1</span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats">
+        <div class="stat alert">
+          <div class="st-n">2</div>
+          <div class="st-l">超期案件</div>
+          <div class="st-s">需要立即处理</div>
+          <div class="st-bar"><div class="st-fill rd"></div></div>
+        </div>
+        <div class="stat warn">
+          <div class="st-n">3</div>
+          <div class="st-l">即将到期</div>
+          <div class="st-s">7 天内截止</div>
+          <div class="st-bar"><div class="st-fill og"></div></div>
+        </div>
+        <div class="stat">
+          <div class="st-n">5</div>
+          <div class="st-l">文书准备</div>
+          <div class="st-s">当前阶段</div>
+          <div class="st-bar"><div class="st-fill bl"></div></div>
+        </div>
+        <div class="stat">
+          <div class="st-n">4</div>
+          <div class="st-l">等候结果</div>
+          <div class="st-s">待判决/裁定</div>
+          <div class="st-bar"><div class="st-fill gr"></div></div>
+        </div>
+        <div class="stat">
+          <div class="st-n">6</div>
+          <div class="st-l">已结归档</div>
+          <div class="st-s">胜诉 4 · 调解 1 · 撤诉 1</div>
+          <div class="st-bar"><div class="st-fill gr" style="width:100%"></div></div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="vrow">
+        <div class="vt" id="viewToggle">
+          <button class="active" data-mode="flow">按流程分组</button>
+          <button data-mode="flat">全部案件</button>
+        </div>
+        <div class="vb" id="batchBar">
+          <span>已选 <span class="bn" id="batchN">0</span> 件</span>
+          <button class="go" id="batchAdv">推进</button>
+          <button class="go" id="batchAsgn">指派</button>
+          <button class="cl" id="batchClr">取消</button>
+        </div>
+        <div class="vi">显示 20 件</div>
+      </div>
+
+      <!-- ===== FLOW VIEW ===== -->
+      <div class="flow" id="flowView">
+
+        <!-- 超期 -->
+        <div class="sec" style="border-left:3px solid var(--red)">
+          <div class="sec-hd" style="background:var(--red-soft)">
+            <div class="hdl">
+              <span class="hd-arr">⌄</span>
+              <span class="hd-l" style="color:var(--red)">超期案件</span>
+              <span class="hd-c">2 件</span>
+              <span class="hd-b rd">需立即处理</span>
+            </div>
+            <div class="hd-act">
+              <button class="hd-btn pr">全部推进</button>
+            </div>
+          </div>
+          <div class="sec-bd">
+            <div class="row rd">
+              <div class="cb" data-id="c1"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">张三诉李四借款纠纷</span>
+                  <span class="rr">(2025)沪0105民初1234号</span>
+                  <span class="rs rd">超期 3 天</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">张三 → 李四 · 民间借贷</span>
+                  <span class="rdl rd">⏰ 截止 2026-06-01</span>
+                  <span class="rh">等候结果 · 停留 5 天</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#F59E0B"></span>等候结果</span>
+                <div class="rlr"><span class="rav">王</span><span class="rln">王浩</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+            <div class="row rd">
+              <div class="cb" data-id="c2"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">某科技公司合同纠纷</span>
+                  <span class="rr">(2025)沪0115民初5678号</span>
+                  <span class="rs rd">超期 1 天</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">某科技 → 某信息公司</span>
+                  <span class="rdl rd">⏰ 截止 2026-06-03</span>
+                  <span class="rh">文书准备 · 停留 8 天</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#6366F1"></span>文书准备</span>
+                <div class="rlr"><span class="rav">赵</span><span class="rln">赵敏</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 文书准备 -->
+        <div class="sec">
+          <div class="sec-hd">
+            <div class="hdl">
+              <span class="hd-arr">⌄</span>
+              <span class="hd-l">文书准备</span>
+              <span class="hd-c">5</span>
+              <span class="hd-b og">2 件本周到期</span>
+            </div>
+            <div class="hd-act">
+              <button class="hd-btn">排序</button>
+              <button class="hd-btn pr">推进 → 出庭</button>
+            </div>
+          </div>
+          <div class="sec-bd">
+            <div class="row og">
+              <div class="cb" data-id="c3"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">某银行金融借款纠纷</span>
+                  <span class="rr">(2025)沪0101民初9012号</span>
+                  <span class="rs og">剩 3 天</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">某银行 → 某贸易公司</span>
+                  <span class="rdl og">⏰ 截止 2026-06-07</span>
+                  <span class="rh">停留 12 天</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#6366F1"></span>文书准备</span>
+                <div class="rlr"><span class="rav">李</span><span class="rln">李芳</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+            <div class="row og">
+              <div class="cb" data-id="c4"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">王某人身损害赔偿</span>
+                  <span class="rr">(2025)沪0105民初3456号</span>
+                  <span class="rs og">剩 5 天</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">王某 → 某物业公司</span>
+                  <span class="rdl og">⏰ 截止 2026-06-09</span>
+                  <span class="rh">停留 6 天</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#6366F1"></span>文书准备</span>
+                <div class="rlr"><span class="rav">王</span><span class="rln">王浩</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="cb" data-id="c5"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">某房地产公司合同纠纷</span>
+                  <span class="rr">(2025)沪0115民初7890号</span>
+                  <span class="rs gr">进行中</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">某房地产 → 某建筑公司</span>
+                  <span class="rdl">⏰ 截止 2026-06-20</span>
+                  <span class="rh">停留 4 天</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#6366F1"></span>文书准备</span>
+                <div class="rlr"><span class="rav">陈</span><span class="rln">陈思远</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 出庭 -->
+        <div class="sec">
+          <div class="sec-hd">
+            <div class="hdl">
+              <span class="hd-arr">⌄</span>
+              <span class="hd-l">出庭应诉</span>
+              <span class="hd-c">3</span>
+              <span class="hd-b og">明日开庭 1</span>
+            </div>
+            <div class="hd-act">
+              <button class="hd-btn">排序</button>
+            </div>
+          </div>
+          <div class="sec-bd">
+            <div class="row og">
+              <div class="cb" data-id="c6"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">某物流公司运输合同纠纷</span>
+                  <span class="rr">(2025)沪0105民初1111号</span>
+                  <span class="rs bl">明日 09:00 开庭</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">某物流 → 某货运公司</span>
+                  <span class="rdl og">⏰ 2026-06-05 09:00</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#F59E0B"></span>出庭应诉</span>
+                <div class="rlr"><span class="rav">赵</span><span class="rln">赵敏</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="cb" data-id="c7"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">刘某劳动争议</span>
+                  <span class="rr">(2025)沪0105民初2222号</span>
+                  <span class="rs gr">待开庭</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">刘某 → 某科技公司</span>
+                  <span class="rdl">📅 2026-06-12 14:00</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#F59E0B"></span>出庭应诉</span>
+                <div class="rlr"><span class="rav">李</span><span class="rln">李芳</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 咨询 -->
+        <div class="sec">
+          <div class="sec-hd">
+            <div class="hdl">
+              <span class="hd-arr">⌄</span>
+              <span class="hd-l">咨询 / 待定</span>
+              <span class="hd-c">2</span>
+            </div>
+          </div>
+          <div class="sec-bd">
+            <div class="row">
+              <div class="cb" data-id="c8"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">某公司股权转让咨询</span>
+                  <span class="rs gr">新咨询</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">咨询人：张某</span>
+                  <span class="rdl">📅 2026-06-03</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi">咨询</span>
+                <div class="rlr"><span class="rav">陈</span><span class="rln">陈思远</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 等候 -->
+        <div class="sec">
+          <div class="sec-hd">
+            <div class="hdl">
+              <span class="hd-arr">⌄</span>
+              <span class="hd-l">等候结果</span>
+              <span class="hd-c">4</span>
+            </div>
+          </div>
+          <div class="sec-bd">
+            <div class="row">
+              <div class="cb" data-id="c9"></div>
+              <div class="rbd">
+                <div class="r1">
+                  <span class="rn">某建筑公司工程款纠纷</span>
+                  <span class="rr">(2025)沪0105民初3333号</span>
+                  <span class="rs gr">已开庭</span>
+                </div>
+                <div class="r2">
+                  <span class="rp">某建筑公司 → 某开发公司</span>
+                  <span class="rdl">📅 庭审结束 2026-05-28</span>
+                  <span class="rh">停留 7 天</span>
+                </div>
+              </div>
+              <div class="rrt">
+                <span class="rsi"><span class="sdot" style="background:#F59E0B"></span>等候结果</span>
+                <div class="rlr"><span class="rav">王</span><span class="rln">王浩</span></div>
+                <div class="rq"><button class="rqb" title="详情">→</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 已结 -->
+        <div class="sec collapsed">
+          <div class="sec-hd">
+            <div class="hdl">
+              <span class="hd-arr">⌄</span>
+              <span class="hd-l">已结 / 归档</span>
+              <span class="hd-c">6</span>
+            </div>
+          </div>
+          <div class="sec-sum">
+            <span>胜诉 4 · 调解 1 · 撤诉 1</span>
+            <span style="color:var(--text-tertiary)">|</span>
+            <span>王浩(2) · 赵敏(2) · 李芳(1) · 陈思远(1)</span>
+          </div>
+        </div>
+
+      </div><!-- /flow -->
+
+      <!-- ===== FLAT VIEW ===== -->
+      <div class="flat" id="flatView" style="display:none">
+        <div class="flat-f">
+          <button class="fli active">全部 20</button>
+          <button class="fli" style="color:var(--red)">超期 2</button>
+          <button class="fli">今日 1</button>
+          <button class="fli">咨询 2</button>
+          <button class="fli">文书 5</button>
+          <button class="fli">出庭 3</button>
+          <button class="fli">等候 4</button>
+          <button class="fli">已结 6</button>
+        </div>
+
+        <div class="flat-it">
+          <div class="cb" data-id="c1"></div>
+          <span class="ft" style="color:var(--red);background:var(--red-soft)">超期 · 等候</span>
+          <div class="rbd"><div class="r1"><span class="rn">张三诉李四借款纠纷</span><span class="rr">(2025)沪0105民初1234号</span><span class="rs rd">超期 3 天</span></div></div>
+          <div class="rlr"><span class="rav">王</span><span class="rln">王浩</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c2"></div>
+          <span class="ft" style="color:var(--red);background:var(--red-soft)">超期 · 文书</span>
+          <div class="rbd"><div class="r1"><span class="rn">某科技公司合同纠纷</span><span class="rr">(2025)沪0115民初5678号</span><span class="rs rd">超期 1 天</span></div></div>
+          <div class="rlr"><span class="rav">赵</span><span class="rln">赵敏</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c6"></div>
+          <span class="ft" style="color:var(--orange);background:var(--orange-soft)">出庭</span>
+          <div class="rbd"><div class="r1"><span class="rn">某物流公司运输合同纠纷</span><span class="rr">(2025)沪0105民初1111号</span><span class="rs bl">明日开庭</span></div></div>
+          <div class="rlr"><span class="rav">赵</span><span class="rln">赵敏</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c3"></div>
+          <span class="ft" style="color:var(--text-secondary);background:var(--bg)">文书</span>
+          <div class="rbd"><div class="r1"><span class="rn">某银行金融借款纠纷</span><span class="rr">(2025)沪0101民初9012号</span><span class="rs og">剩 3 天</span></div></div>
+          <div class="rlr"><span class="rav">李</span><span class="rln">李芳</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c4"></div>
+          <span class="ft" style="color:var(--text-secondary);background:var(--bg)">文书</span>
+          <div class="rbd"><div class="r1"><span class="rn">王某人身损害赔偿</span><span class="rr">(2025)沪0105民初3456号</span><span class="rs og">剩 5 天</span></div></div>
+          <div class="rlr"><span class="rav">王</span><span class="rln">王浩</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c5"></div>
+          <span class="ft" style="color:var(--text-secondary);background:var(--bg)">文书</span>
+          <div class="rbd"><div class="r1"><span class="rn">某房地产公司合同纠纷</span><span class="rr">(2025)沪0115民初7890号</span><span class="rs gr">进行中</span></div></div>
+          <div class="rlr"><span class="rav">陈</span><span class="rln">陈思远</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c7"></div>
+          <span class="ft" style="color:var(--orange);background:var(--orange-soft)">出庭</span>
+          <div class="rbd"><div class="r1"><span class="rn">刘某劳动争议</span><span class="rr">(2025)沪0105民初2222号</span><span class="rs gr">待开庭</span></div></div>
+          <div class="rlr"><span class="rav">李</span><span class="rln">李芳</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c8"></div>
+          <span class="ft" style="color:var(--text-secondary);background:var(--bg)">咨询</span>
+          <div class="rbd"><div class="r1"><span class="rn">某公司股权转让咨询</span><span class="rs gr">新咨询</span></div></div>
+          <div class="rlr"><span class="rav">陈</span><span class="rln">陈思远</span></div>
+        </div>
+        <div class="flat-it">
+          <div class="cb" data-id="c9"></div>
+          <span class="ft" style="color:var(--text-secondary);background:var(--bg)">等候</span>
+          <div class="rbd"><div class="r1"><span class="rn">某建筑公司工程款纠纷</span><span class="rr">(2025)沪0105民初3333号</span><span class="rs gr">已开庭</span></div></div>
+          <div class="rlr"><span class="rav">王</span><span class="rln">王浩</span></div>
+        </div>
+      </div><!-- /flat -->
+
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('#viewToggle button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#viewToggle button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('flowView').style.display=b.dataset.mode==='flow'?'':'none';
+    document.getElementById('flatView').style.display=b.dataset.mode==='flat'?'':'none';
+  });
+});
+document.querySelectorAll('.sec-hd').forEach(h=>{
+  h.addEventListener('click',e=>{if(e.target.closest('.hd-act'))return;h.closest('.sec').classList.toggle('collapsed')});
+});
+let sel=new Set();const bb=document.getElementById('batchBar');const bn=document.getElementById('batchN');
+function ub(){const n=sel.size;bb.classList.toggle('show',n>0);bn.textContent=n}
+document.querySelectorAll('.cb').forEach(el=>{
+  el.addEventListener('click',e=>{
+    e.stopPropagation();const id=el.dataset.id;
+    if(sel.has(id)){sel.delete(id);el.classList.remove('chk');el.closest('.row,.flat-it')?.classList.remove('sel')}
+    else{sel.add(id);el.classList.add('chk');el.closest('.row,.flat-it')?.classList.add('sel')}
+    ub();
+  });
+});
+document.getElementById('batchClr').addEventListener('click',()=>{sel.clear();document.querySelectorAll('.cb.chk').forEach(el=>{el.classList.remove('chk');el.closest('.row,.flat-it')?.classList.remove('sel')});ub()});
+document.querySelectorAll('#flatView .fli').forEach(p=>{p.addEventListener('click',()=>{document.querySelectorAll('#flatView .fli').forEach(x=>x.classList.remove('active'));p.classList.add('active')})});
+</script>
+</body>
+</html>
