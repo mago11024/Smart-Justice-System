@@ -4,6 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.routers import cases, lawyers, stats, notifications, documents, ai, settings, events
 
+try:
+    from app.config_env import load_env_file
+    load_env_file()
+except ImportError:
+    pass
+
 app = FastAPI(title="案件驾驶舱 API", version="1.0.0")
 
 app.add_middleware(
@@ -48,7 +54,11 @@ def on_startup():
     except Exception:
         pass
 
+<<<<<<< HEAD
     # 从 config.json 同步 AI 引擎配置到环境变量
+=======
+    # 从 config.json 同步非敏感 AI 配置，密钥由 .env/环境变量提供
+>>>>>>> 4c939f89f6909b7071645829359396928fd49dfd
     try:
         from app.routers.settings import _load_config, _sync_env
         config = _load_config()

@@ -120,6 +120,7 @@ def add_log(case_id: int, data: dict, db: Session = Depends(get_db)):
     }
 
 
+
 @router.post("/{case_id}/generate-core-summary")
 async def generate_core_summary(case_id: int, db: Session = Depends(get_db)):
     """调用 AI 综合案件信息+文档分析结果，生成核心信息梳理"""
@@ -165,6 +166,7 @@ async def generate_core_summary(case_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"ok": True, "core_summary": result["data"]}
+
 
 
 @router.get("/export/csv")
