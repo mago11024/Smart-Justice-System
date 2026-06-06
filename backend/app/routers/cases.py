@@ -120,6 +120,55 @@ def add_log(case_id: int, data: dict, db: Session = Depends(get_db)):
     }
 
 
+
+@router.post("/{case_id}/generate-core-summary")
+async def generate_core_summary(case_id: int, db: Session = Depends(get_db)):
+    """调用 AI 综合案件信息+文档分析结果，生成核心信息梳理"""
+    import json, logging
+    from app.services.ai_service import generate_core_summary as gen_cs
+
+    case = db.query(models.Case).filter(models.Case.id == case_id).first()
+    if not case:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="案件不存在")
+
+    docs = db.query(models.CaseDocument).filter(
+        models.CaseDocument.case_id == case_id
+    ).order_by(models.CaseDocument.uploaded_at.desc()).all()
+
+    doc_summaries = [{
+        "filename": d.filename,
+        "ai_analysis_status": d.ai_analysis_status,
+        "ai_extracted_stage": d.ai_extracted_stage,
+        "ai_extracted_cause": d.ai_extracted_cause,
+        "ai_extracted_parties": d.ai_extracted_parties,
+        "ai_raw_response": d.ai_raw_response,
+    } for d in docs]
+
+    case_data = {
+        "case_name": case.case_name,
+        "case_number": case.case_number or "",
+        "plaintiff": case.plaintiff or "",
+        "defendant": case.defendant or "",
+        "cause_of_action": case.cause_of_action or "",
+        "stage": case.stage,
+        "notes": case.notes or "",
+    }
+
+    result = await gen_cs(case_data, doc_summaries)
+
+    if not result.get("success"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=result.get("error", "AI 生成失败"))
+
+    core_summary_json = json.dumps(result["data"], ensure_ascii=False)
+    case.core_summary = core_summary_json
+    db.commit()
+
+    return {"ok": True, "core_summary": result["data"]}
+
+
+
 @router.get("/export/csv")
 def export_csv(
     search: Optional[str] = Query(None),

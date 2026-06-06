@@ -147,6 +147,130 @@ async def match_to_case(extracted: dict, cases: list[dict]) -> dict:
         return {"matched_id": None, "confidence": 0.0, "reason": str(e)}
 
 
+EVIDENCE_CATALOG_PROMPT = """你是资深法律案件分析师。基于给定的案件基本信息以及已上传证据材料的AI提取/原始文本，为提交人整理一份可直接提交法院的证据目录，以严格JSON返回。
+
+## 案件基本信息
+{case_info}
+
+## 已上传文档详情
+{doc_summaries}
+
+## 输出字段
+
+{{
+  "submitter_role": "提交人的诉讼地位，如原告、被告、第三人、申请执行人等",
+  "evidence_list": [
+    {{
+      "index": 1,
+      "name": "证据名称。要具体，包含文书编号/日期/签署方等关键标识。例如：'编号GF-2000-0171《商品房买卖合同》（2013年2月签订）'",
+      "proof_content": "证明内容：用一句话说明该份证据用来证明什么事实。例如：'证明原被告之间存在商品房买卖合同关系'",
+      "type": "书证|物证|证人证言|视听资料|电子数据|鉴定意见|勘验笔录|当事人陈述"
+    }},
+    ...
+  ]
+}}
+
+## 规则
+
+1. submitter_role 从案件材料中判断提交方诉讼地位。
+2. evidence_list 按证明逻辑排序，每组证据（如合同类、付款类、判决类、程序类）放在一起。通常5-15条。
+3. 证据名称必须从文档材料中提取，不可凭空编造。若有合同编号、签订日期、当事人姓名等细节，务必写进名称中。
+4. proof_content 必须指向具体的待证事实，每条证明内容是一个完整陈述句。
+5. type 根据证据形式判断，默认为'书证'。
+6. 如果文档材料不足，基于已有信息尽力填充，但不要编造不存在的证据。
+7. 只返回JSON，不要```json```包裹，不要解释。"""
+
+EVIDENCE_CATALOG_PROMPT_NO_DOCS = """你是资深法律案件分析师。基于给定的案件基本信息，为该案件整理一份证据清单框架，以严格JSON返回。
+
+## 案件基本信息
+{case_info}
+
+## 输出字段
+
+{{
+  "submitter_role": "提交人的诉讼地位",
+  "evidence_list": [
+    {{
+      "index": 1,
+      "name": "证据名称",
+      "proof_content": "证明内容",
+      "type": "书证"
+    }}
+  ]
+}}
+
+## 规则
+
+1. 基于案由和当事人信息，推测该类型案件通常需要哪些关键证据。
+2. 证据名称先给通用描述（如'《xx合同》'），留待律师补充细节。
+3. 证明内容指向该类案件的要件事实。
+4. 每类证据一条，控制在5-8条，不要过度推测。
+5. 只返回JSON，不要```json```包裹，不要解释。"""
+
+
+async def generate_core_summary(case_data: dict, doc_summaries: list[dict]) -> dict:
+    """调用AI引擎，综合案件信息与文档分析结果，生成证据目录"""
+    case_info = json.dumps({
+        "案件名称": case_data.get("case_name", ""),
+        "案号": case_data.get("case_number", ""),
+        "原告": case_data.get("plaintiff", ""),
+        "被告": case_data.get("defendant", ""),
+        "案由": case_data.get("cause_of_action", ""),
+        "当前阶段": case_data.get("stage_label", case_data.get("stage", "")),
+        "备注": case_data.get("notes", ""),
+    }, ensure_ascii=False, indent=2)
+
+    docs_text = ""
+    for i, d in enumerate(doc_summaries[:15], 1):
+        parts = [f"文档{i}: {d.get('filename', '')}"]
+        if d.get("ai_extracted_stage"):
+            parts.append(f"  阶段: {d['ai_extracted_stage']}")
+        if d.get("ai_extracted_cause"):
+            parts.append(f"  案由: {d['ai_extracted_cause']}")
+        try:
+            parties = json.loads(d.get("ai_extracted_parties", "{}"))
+            if parties.get("plaintiff"):
+                parts.append(f"  原告: {parties['plaintiff']}")
+            if parties.get("defendant"):
+                parts.append(f"  被告: {parties['defendant']}")
+        except Exception:
+            pass
+        if d.get("ai_raw_response"):
+            try:
+                raw = json.loads(d["ai_raw_response"])
+                if raw.get("key_facts"):
+                    parts.append(f"  关键事实: {raw['key_facts']}")
+                if raw.get("document_type"):
+                    parts.append(f"  文书类型: {raw['document_type']}")
+                if raw.get("next_action"):
+                    parts.append(f"  建议: {raw['next_action']}")
+            except Exception:
+                pass
+        docs_text += "\n".join(parts) + "\n\n"
+
+    if docs_text.strip():
+        prompt = EVIDENCE_CATALOG_PROMPT.format(case_info=case_info, doc_summaries=docs_text)
+    else:
+        prompt = EVIDENCE_CATALOG_PROMPT_NO_DOCS.format(case_info=case_info)
+
+    try:
+        engine = get_engine()
+        result = await engine.chat_json(prompt, temperature=0.1, max_tokens=2000)
+        if not result:
+            return {"success": False, "error": "AI 返回为空或解析失败"}
+        # 确保每条有 index
+        if result.get("evidence_list"):
+            for idx, item in enumerate(result["evidence_list"], 1):
+                if "index" not in item or item["index"] is None:
+                    item["index"] = idx
+                if "type" not in item or not item["type"]:
+                    item["type"] = "书证"
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.exception("generate_core_summary 失败")
+        return {"success": False, "error": str(e)}
+
+
 def extract_text(file_path: str, ext: str) -> str:
     """从 PDF/DOCX/TXT/图片 提取文本
 

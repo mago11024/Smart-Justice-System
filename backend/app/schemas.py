@@ -45,6 +45,7 @@ class CaseUpdate(BaseModel):
     outcome: Optional[str] = None
     outcome_note: Optional[str] = None
     notes: Optional[str] = None
+    core_summary: Optional[str] = None
 
 
 class AdvanceRequest(BaseModel):
@@ -85,6 +86,7 @@ class CaseResponse(BaseModel):
     outcome: Optional[str]
     outcome_note: Optional[str]
     notes: str
+    core_summary: Optional[str] = ""
     created_at: datetime
     updated_at: datetime
 

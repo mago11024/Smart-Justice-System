@@ -1,0 +1,13 @@
+import api from './index'
+
+export function getSettings() {
+  return api.get('/settings')
+}
+
+export function updateSettings(data) {
+  return api.put('/settings', data)
+}
+
+export function resetSettings() {
+  return api.post('/settings/reset')
+}

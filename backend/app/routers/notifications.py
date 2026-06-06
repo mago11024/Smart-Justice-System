@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
 from app.schemas import NotificationResponse
+from app.services.sse_manager import sse_manager
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -37,6 +38,7 @@ def mark_read(nid: int, db: Session = Depends(get_db)):
     if n:
         n.is_read = True
         db.commit()
+        sse_manager.broadcast("notification_changed", {})
     return {"ok": True}
 
 
@@ -44,6 +46,7 @@ def mark_read(nid: int, db: Session = Depends(get_db)):
 def read_all(db: Session = Depends(get_db)):
     db.query(models.Notification).filter(models.Notification.is_read == False).update({"is_read": True})
     db.commit()
+    sse_manager.broadcast("notification_changed", {})
     return {"ok": True}
 
 

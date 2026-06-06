@@ -2,11 +2,14 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.config_env import load_env_file
 from app.auth import get_current_user
-from app.routers import ai, auth, cases, documents, lawyers, notifications, settings, stats
+from app.routers import ai, auth, cases, documents, events, lawyers, notifications, settings, stats
 
-load_env_file()
+try:
+    from app.config_env import load_env_file
+    load_env_file()
+except ImportError:
+    pass
 
 app = FastAPI(title="案件驾驶舱 API", version="1.0.0")
 
@@ -28,6 +31,7 @@ app.include_router(notifications.router, dependencies=protected)
 app.include_router(documents.router, dependencies=protected)
 app.include_router(ai.router, dependencies=protected)
 app.include_router(settings.router, dependencies=protected)
+app.include_router(events.router, dependencies=protected)
 
 
 @app.on_event("startup")

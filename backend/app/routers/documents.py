@@ -7,6 +7,7 @@ from app.database import get_db
 from app import models
 from app.schemas import DocumentResponse, DocumentUploadResponse
 from app.services.ai_service import analyze_document, extract_text, match_to_case
+from app.services.sse_manager import sse_manager
 
 UPLOAD_DIR = "uploads"
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -296,6 +297,7 @@ def confirm_ingest(data: dict, db: Session = Depends(get_db)):
         except Exception:
             pass
         db.commit()
+        sse_manager.broadcast("task_changed", {"task_id": data["document_id"], "action": "removed"})
         return {"ok": True, "action": "linked", "case_id": case_id}
 
     elif data["action"] == "new":
@@ -303,6 +305,8 @@ def confirm_ingest(data: dict, db: Session = Depends(get_db)):
 
         # 从文档 AI 分析结果中读取扩展字段
         notes_parts = []
+        if nc.get("notes"):
+            notes_parts.append(nc["notes"])
         try:
             raw = json.loads(doc.ai_raw_response or "{}")
             if raw.get("court"): notes_parts.append(f"管辖法院: {raw['court']}")
@@ -337,6 +341,7 @@ def confirm_ingest(data: dict, db: Session = Depends(get_db)):
             pass
         db.add(models.CaseLog(case_id=case.id, action="created", new_value=case.stage, note="AI 智能收件创建"))
         db.commit()
+        sse_manager.broadcast("task_changed", {"task_id": data["document_id"], "action": "removed"})
         return {"ok": True, "action": "created", "case_id": case.id}
 
     raise HTTPException(status_code=400, detail="无效的 action")
@@ -366,6 +371,9 @@ async def smart_ingest_async(
     db.commit()
     db.refresh(doc)
 
+    # SSE: 通知所有客户端有新任务
+    sse_manager.broadcast("task_changed", {"task_id": doc.id, "action": "created"})
+
     import threading
     threading.Thread(
         target=_run_smart_ingest, args=(doc.id, file_path, ext),
@@ -386,6 +394,7 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
         doc.ai_analysis_status = "processing"
         doc.ai_progress = "正在提取文本…"
         db.commit()
+        sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "processing", "progress": doc.ai_progress})
 
         text = extract_text(file_path, ext)
         if not text.strip():
@@ -393,11 +402,13 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
             doc.ai_raw_response = "文件内容为空或无法提取文本"
             doc.ai_progress = "文本提取失败"
             db.commit()
+            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "failed", "progress": doc.ai_progress})
             _create_analysis_notification(db, doc, "failed")
             return
 
         doc.ai_progress = f"文本提取完成 ({len(text)} 字符)，正在 AI 分析…"
         db.commit()
+        sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "processing", "progress": doc.ai_progress})
 
         result = asyncio_run(analyze_document(text))
 
@@ -424,6 +435,7 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
             doc.ai_raw_response = result.get("raw", "")
             doc.ai_progress = "AI 分析完成，正在匹配已有案件…"
             db.commit()
+            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "processing", "progress": doc.ai_progress})
 
             # 案件匹配
             active = db.query(models.Case).filter(
@@ -451,12 +463,14 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
             }, ensure_ascii=False)
             doc.ai_progress = "分析完成"
             db.commit()
+            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "completed", "progress": doc.ai_progress})
             _create_analysis_notification(db, doc, "completed")
         else:
             doc.ai_analysis_status = "failed"
             doc.ai_raw_response = result.get("raw", result.get("error", ""))
             doc.ai_progress = "AI 分析失败"
             db.commit()
+            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "failed", "progress": doc.ai_progress})
             _create_analysis_notification(db, doc, "failed")
     except Exception as e:
         import traceback
@@ -469,6 +483,7 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
                 doc.ai_raw_response = err_msg[:2000]  # 截断保存
                 doc.ai_progress = "处理异常"
                 db.commit()
+                sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "failed", "progress": doc.ai_progress})
                 _create_analysis_notification(db, doc, "failed")
         except Exception as inner_e:
             _log.getLogger("documents").error("Failed to save error: %s", inner_e)
@@ -487,6 +502,7 @@ def _create_analysis_notification(db, doc, status: str):
     )
     db.add(notif)
     db.commit()
+    sse_manager.broadcast("notification_changed", {})
 
 
 def _parse_match_preview(match_json: str) -> dict | None:

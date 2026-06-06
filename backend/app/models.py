@@ -41,6 +41,7 @@ class Case(Base):
     lawyer_id = Column(Integer, ForeignKey("lawyers.id"), nullable=True)
     is_archived = Column(Boolean, default=False)
     notes = Column(Text, default="")
+    core_summary = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

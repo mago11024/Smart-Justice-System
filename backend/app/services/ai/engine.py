@@ -2,10 +2,8 @@
 import os, json, logging
 from abc import ABC, abstractmethod
 from typing import Optional
-from app.config_env import load_env_file
 
 logger = logging.getLogger("ai_engine")
-load_env_file()
 
 # 引擎注册表
 _registry: dict[str, type] = {}
@@ -83,7 +81,7 @@ _embed_name: str = ""
 
 
 def _load_config_fallback() -> dict:
-    """从 config.json 读取非敏感配置（env var 未设置时的回退）"""
+    """从 config.json 读取配置（env var 未设置时的回退）"""
     try:
         import json
         cfg_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config.json")
@@ -181,8 +179,7 @@ def flush_caches():
 
 
 def _load_engine_config(engine_name: str) -> dict:
-    """读取指定引擎的非敏感配置。密钥只从环境变量或 .env 读取。"""
-    load_env_file()
+    """读取指定引擎的配置。env var 优先，config.json 回退。"""
     cfg = {}
     try:
         import json
@@ -191,7 +188,6 @@ def _load_engine_config(engine_name: str) -> dict:
             cfg = json.load(f).get("ai", {}).get(engine_name, {})
     except Exception:
         pass
-    cfg.pop("api_key", None)
     return cfg
 
 

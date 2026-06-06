@@ -32,6 +32,7 @@ def case_to_dict(case: models.Case) -> dict:
         "outcome": case.outcome,
         "outcome_note": case.outcome_note,
         "notes": case.notes or "",
+        "core_summary": case.core_summary or "",
         "created_at": case.created_at,
         "updated_at": case.updated_at,
     }

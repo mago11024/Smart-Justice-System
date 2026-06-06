@@ -1,16 +1,14 @@
 """PaddleOCR 云端服务 — 处理扫描件 PDF / 图片 OCR"""
 import os, json, time, logging
 import httpx
-from app.config_env import load_env_file
 
 logger = logging.getLogger("paddle_ocr")
-load_env_file()
 
 JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
 
 
 def _get_config() -> dict:
-    """从 config.json 读取 PaddleOCR 非敏感配置"""
+    """从 config.json 读取 PaddleOCR 配置"""
     try:
         config_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config.json")
         with open(config_path, "r", encoding="utf-8") as f:
@@ -25,10 +23,9 @@ def ocr_pdf(file_path: str, timeout: int = 120) -> str:
 
     流程：提交任务 → 轮询 → 下载 JSONL → 解析文本
     """
-    load_env_file()
     cfg = _get_config()
-    token = os.getenv("PADDLEOCR_TOKEN", "")
-    model = os.getenv("PADDLEOCR_MODEL", "") or cfg.get("model", "PP-OCRv5")
+    token = cfg.get("token", "") or os.getenv("PADDLEOCR_TOKEN", "")
+    model = cfg.get("model", "PP-OCRv5")
 
     if not token:
         logger.warning("PaddleOCR token 未配置，跳过 OCR")

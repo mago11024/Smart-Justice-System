@@ -1,19 +1,17 @@
-"""设置路由：读取/写入非敏感 JSON 配置和 .env 密钥。"""
+"""设置路由：读取/写入 JSON 配置文件"""
 import json, os, logging
 from copy import deepcopy
 from fastapi import APIRouter
-from app.config_env import load_env_file, update_env_file
 
 logger = logging.getLogger("settings")
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config.json")
-load_env_file()
 
 # 需要脱敏的字段路径 (JSON key path)
 SENSITIVE_KEYS = {
-    ("ai", "openai", "api_key"): "AI_OPENAI_KEY",
-    ("ai", "deepseek", "api_key"): "AI_DEEPSEEK_KEY",
-    ("paddleocr", "token"): "PADDLEOCR_TOKEN",
+    ("ai", "openai", "api_key"),
+    ("ai", "deepseek", "api_key"),
+    ("paddleocr", "token"),
 }
 MASK = "***"
 
@@ -78,15 +76,11 @@ def _load_config() -> dict:
 
     merged = deepcopy(DEFAULT_CONFIG)
     _deep_merge(merged, saved)
-    if _remove_config_secrets(merged):
-        _save_config(merged)
     return merged
 
 
 def _save_config(config: dict):
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-    config = deepcopy(config)
-    _remove_config_secrets(config)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
@@ -102,51 +96,33 @@ def _deep_merge(base: dict, override: dict):
 def _mask_secrets(config: dict) -> dict:
     """返回脱敏后的配置副本，密钥字段替换为 ***"""
     masked = deepcopy(config)
-    for path, env_key in SENSITIVE_KEYS.items():
+    for path in SENSITIVE_KEYS:
         d = masked
         for key in path[:-1]:
             d = d.setdefault(key, {})
-        if d.get(path[-1], "") or os.getenv(env_key, ""):
+        if d.get(path[-1], ""):
             d[path[-1]] = MASK
     return masked
 
 
-def _remove_config_secrets(config: dict) -> bool:
-    """清除 JSON 配置中的敏感字段，避免密钥落盘到 config.json。"""
-    changed = False
+def _filter_empty_keys(data: dict, disk_config: dict):
+    """移除 data 中值为 '' 的敏感字段，防止空值覆盖已有密钥"""
     for path in SENSITIVE_KEYS:
-        d = config
-        try:
-            for key in path[:-1]:
-                d = d[key]
-            if d.get(path[-1], ""):
-                changed = True
-            d[path[-1]] = ""
-        except (KeyError, TypeError):
-            pass
-    return changed
-
-
-def _extract_secret_updates(data: dict) -> dict[str, str]:
-    """从请求中提取密钥写入 .env，同时从 JSON 数据中移除。"""
-    updates: dict[str, str] = {}
-    for path, env_key in SENSITIVE_KEYS.items():
         d = data
+        disk_d = disk_config
         try:
             for key in path[:-1]:
                 d = d[key]
-            value = d.get(path[-1], "")
-            if value and value != MASK:
-                updates[env_key] = value
-            d[path[-1]] = ""
+                disk_d = disk_d.get(key, {})
+            if d.get(path[-1], "") == "" or d.get(path[-1], None) == MASK:
+                # 恢复为磁盘上的值
+                d[path[-1]] = disk_d.get(path[-1], "")
         except (KeyError, TypeError):
             pass
-    return updates
 
 
 def _sync_env(config: dict):
-    """将非敏感配置同步到环境变量，使引擎工厂生效。"""
-    load_env_file()
+    """将配置文件同步到环境变量，使引擎工厂生效"""
     ai = config.get("ai", {})
 
     chat_name = ai.get("engine", "ollama")
@@ -164,10 +140,12 @@ def _sync_env(config: dict):
             os.environ["AI_OLLAMA_EMBED_MODEL"] = cfg.get("embed_model", "nomic-embed-text")
         elif eng_name == "openai":
             os.environ["AI_OPENAI_BASE"] = cfg.get("base_url", "")
+            os.environ["AI_OPENAI_KEY"] = cfg.get("api_key", "")
             os.environ["AI_OPENAI_MODEL"] = cfg.get("model", "gpt-4o-mini")
             os.environ["AI_OPENAI_EMBED_MODEL"] = cfg.get("embed_model", "text-embedding-3-small")
         elif eng_name == "deepseek":
             os.environ["AI_DEEPSEEK_BASE"] = cfg.get("base_url", "https://api.deepseek.com/v1")
+            os.environ["AI_DEEPSEEK_KEY"] = cfg.get("api_key", "")
             os.environ["AI_DEEPSEEK_MODEL"] = cfg.get("model", "deepseek-chat")
         elif eng_name == "llamacpp":
             os.environ["AI_LLAMACPP_BASE"] = cfg.get("base_url", "http://localhost:8080/v1")
@@ -178,7 +156,9 @@ def _sync_env(config: dict):
     os.environ["AI_DEEPSEEK_TIMEOUT"] = str(ai.get("timeout", 120))
     os.environ["AI_LLAMACPP_TIMEOUT"] = str(ai.get("timeout", 120))
 
-    os.environ["PADDLEOCR_MODEL"] = config.get("paddleocr", {}).get("model", "PP-OCRv5")
+    # PaddleOCR
+    po = config.get("paddleocr", {})
+    os.environ["PADDLEOCR_TOKEN"] = po.get("token", "")
 
 
 @router.get("")
@@ -190,15 +170,13 @@ def get_settings():
 
 @router.put("")
 def update_settings(data: dict):
-    """更新配置。密钥写入 .env，其他配置写入 config.json。"""
+    """更新配置。空密钥不覆盖已有值。返回脱敏后的配置。"""
     current = _load_config()
 
-    secret_updates = _extract_secret_updates(data)
-    if secret_updates:
-        update_env_file(secret_updates)
+    # 空值/MASK 不覆盖已有密钥
+    _filter_empty_keys(data, current)
 
     _deep_merge(current, data)
-    _remove_config_secrets(current)
     _save_config(current)
     _sync_env(current)
 
