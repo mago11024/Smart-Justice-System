@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import uvicorn
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.main import app
@@ -13,6 +14,12 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 if not FRONTEND_DIST.exists():
     raise RuntimeError(f"Frontend build not found: {FRONTEND_DIST}")
+
+
+@app.get("/login.html", include_in_schema=False)
+def login_page():
+    return FileResponse(ROOT / "frontend" / "login.html")
+
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
 

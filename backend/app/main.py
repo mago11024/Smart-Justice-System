@@ -1,9 +1,10 @@
 """案件驾驶舱 FastAPI 入口"""
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.config_env import load_env_file
-from app.routers import cases, lawyers, stats, notifications, documents, ai, settings
+from app.auth import get_current_user
+from app.routers import ai, auth, cases, documents, lawyers, notifications, settings, stats
 
 load_env_file()
 
@@ -17,13 +18,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(cases.router)
-app.include_router(lawyers.router)
-app.include_router(stats.router)
-app.include_router(notifications.router)
-app.include_router(documents.router)
-app.include_router(ai.router)
-app.include_router(settings.router)
+protected = [Depends(get_current_user)]
+
+app.include_router(auth.router)
+app.include_router(cases.router, dependencies=protected)
+app.include_router(lawyers.router, dependencies=protected)
+app.include_router(stats.router, dependencies=protected)
+app.include_router(notifications.router, dependencies=protected)
+app.include_router(documents.router, dependencies=protected)
+app.include_router(ai.router, dependencies=protected)
+app.include_router(settings.router, dependencies=protected)
 
 
 @app.on_event("startup")
