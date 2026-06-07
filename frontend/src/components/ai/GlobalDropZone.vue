@@ -47,8 +47,8 @@ const hintHtml = computed(() => {
   margin-bottom: 4px;
 }
 .hint-text {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-tertiary);
-  line-height: 1.4;
+  line-height: 1.18;
 }
 </style>

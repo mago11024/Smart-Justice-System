@@ -45,6 +45,7 @@ def on_startup():
         if os.path.exists(db_path):
             conn = sqlite3.connect(db_path)
             for stmt in [
+                "ALTER TABLE cases ADD COLUMN core_summary TEXT DEFAULT ''",
                 "ALTER TABLE notifications ADD COLUMN document_id INTEGER REFERENCES case_documents(id)",
                 "ALTER TABLE case_documents ADD COLUMN ai_match_result TEXT",
                 "ALTER TABLE case_documents ADD COLUMN ai_progress TEXT DEFAULT ''",
