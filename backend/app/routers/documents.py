@@ -1,16 +1,84 @@
 """文档上传 & AI 分析路由"""
 import os, uuid, json
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, UploadFile, File, Form, Depends, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models
-from app.schemas import DocumentResponse, DocumentUploadResponse
+from app.schemas import DocumentUploadResponse
 from app.services.ai_service import analyze_document, extract_text, match_to_case
 from app.services.sse_manager import sse_manager
 
 UPLOAD_DIR = "uploads"
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+INGEST_STEP_META = {
+    "uploaded": ("上传成功", 8),
+    "extracting": ("文本提取中", 30),
+    "analyzing": ("AI 分析中", 60),
+    "matching": ("匹配案件中", 85),
+    "confirming": ("待确认", 100),
+    "failed": ("处理失败", 100),
+}
+
+
+def _failure_reason(raw: str | None) -> str:
+    """把后端异常压成任务中心可读的一句话。"""
+    if not raw:
+        return "处理失败，请重新分析或手动关联案件"
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            raw = parsed.get("error") or parsed.get("raw") or parsed.get("message") or raw
+    except Exception:
+        pass
+    text = str(raw).strip().splitlines()[0] if str(raw).strip() else ""
+    return (text[:120] if text else "处理失败，请重新分析或手动关联案件")
+
+
+def _utc_iso(dt: datetime | None) -> str | None:
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def _stage_from_task(status: str | None, progress: str | None) -> tuple[str, str, int]:
+    if status == "failed":
+        key = "failed"
+    elif status == "completed":
+        key = "confirming"
+    elif status == "pending":
+        key = "uploaded"
+    else:
+        progress = progress or ""
+        if "匹配" in progress:
+            key = "matching"
+        elif "AI" in progress or "分析" in progress:
+            key = "analyzing"
+        elif "文本" in progress or "提取" in progress:
+            key = "extracting"
+        else:
+            key = "uploaded"
+    label, percent = INGEST_STEP_META[key]
+    return key, label, percent
+
+
+def _task_event(doc: models.CaseDocument, action: str = "updated", error: str | None = None) -> dict:
+    stage_key, label, percent = _stage_from_task(doc.ai_analysis_status, doc.ai_progress)
+    return {
+        "task_id": doc.id,
+        "action": action,
+        "status": doc.ai_analysis_status,
+        "stage": stage_key,
+        "progress": doc.ai_progress or label,
+        "label": label,
+        "percent": percent,
+        "error": error or (_failure_reason(doc.ai_raw_response) if doc.ai_analysis_status == "failed" else ""),
+    }
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -54,18 +122,7 @@ def list_ingest_tasks(
     tasks = q.order_by(models.CaseDocument.uploaded_at.desc()).limit(100).all()
 
     return [
-        {
-            "id": t.id, "filename": t.filename, "file_type": t.file_type or "", "file_size": t.file_size or 0,
-            "ai_analysis_status": t.ai_analysis_status,
-            "ai_extracted_stage": t.ai_extracted_stage, "ai_extracted_cause": t.ai_extracted_cause,
-            "ai_extracted_parties": None,
-            "ai_extracted_deadline": str(t.ai_extracted_deadline) if t.ai_extracted_deadline else None,
-            "ai_extracted_court_date": t.ai_extracted_court_date.isoformat() if t.ai_extracted_court_date else None,
-            "ai_raw_response": (t.ai_raw_response or "")[:200] if t.ai_raw_response else None,
-            "ai_match_result": _parse_match_preview(t.ai_match_result),
-            "ai_progress": t.ai_progress or "",
-            "uploaded_at": t.uploaded_at.isoformat(),
-        }
+        _serialize_ingest_task(t)
         for t in tasks
     ]
 
@@ -153,19 +210,34 @@ def get_smart_ingest_result(doc_id: int, db: Session = Depends(get_db)):
 
     return {
         "document_id": doc.id, "status": doc.ai_analysis_status,
+        "error": _failure_reason(doc.ai_raw_response) if doc.ai_analysis_status == "failed" else "",
         "extracted": extracted,
         "matched_case": match_result.get("matched_case"),
         "candidates": match_result.get("candidates", []),
     }
 
 
-@router.get("/{doc_id}", response_model=DocumentResponse)
+@router.get("/{doc_id}")
 def get_document(doc_id: int, db: Session = Depends(get_db)):
     doc = db.query(models.CaseDocument).filter(models.CaseDocument.id == doc_id).first()
     if not doc:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="文档不存在")
-    return doc
+    return {
+        "id": doc.id,
+        "case_id": doc.case_id,
+        "filename": doc.filename,
+        "file_type": doc.file_type or "",
+        "file_size": doc.file_size or 0,
+        "ai_analysis_status": doc.ai_analysis_status,
+        "ai_extracted_stage": doc.ai_extracted_stage,
+        "ai_extracted_parties": doc.ai_extracted_parties,
+        "ai_extracted_deadline": doc.ai_extracted_deadline,
+        "ai_extracted_cause": doc.ai_extracted_cause,
+        "ai_extracted_court_date": doc.ai_extracted_court_date,
+        "ai_raw_response": doc.ai_raw_response,
+        "uploaded_at": doc.uploaded_at,
+    }
 
 
 @router.post("/{doc_id}/reanalyze")
@@ -175,8 +247,20 @@ def reanalyze(doc_id: int, background_tasks: BackgroundTasks, db: Session = Depe
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="文档不存在")
     doc.ai_analysis_status = "pending"
+    doc.ai_progress = "上传成功"
+    doc.ai_raw_response = ""
+    doc.ai_match_result = None
+    doc.ai_extracted_stage = None
+    doc.ai_extracted_cause = None
+    doc.ai_extracted_parties = None
+    doc.ai_extracted_deadline = None
+    doc.ai_extracted_court_date = None
     db.commit()
-    background_tasks.add_task(_run_analysis, doc.id, doc.file_path, doc.file_type)
+    sse_manager.broadcast("task_changed", _task_event(doc, action="retry"))
+    if doc.case_id is None:
+        background_tasks.add_task(_run_smart_ingest, doc.id, doc.file_path, doc.file_type)
+    else:
+        background_tasks.add_task(_run_analysis, doc.id, doc.file_path, doc.file_type)
     return {"document_id": doc.id, "status": "pending"}
 
 
@@ -211,7 +295,15 @@ async def smart_ingest(
             doc.ai_analysis_status = "failed"
             doc.ai_raw_response = "文件内容为空或无法提取文本"
             db.commit()
-            return {"document_id": doc.id, "status": "failed", "extracted": {}, "matched_case": None, "candidates": []}
+            error = "文件内容为空或无法提取文本"
+            return {
+                "document_id": doc.id,
+                "status": "failed",
+                "error": error,
+                "extracted": {"success": False, "error": error},
+                "matched_case": None,
+                "candidates": [],
+            }
 
         extracted = await analyze_document(text)
 
@@ -264,7 +356,14 @@ async def smart_ingest(
             doc.ai_analysis_status = "failed"
             doc.ai_raw_response = extracted.get("raw", extracted.get("error", ""))
             db.commit()
-            return {"document_id": doc.id, "status": "failed", "extracted": extracted, "matched_case": None, "candidates": []}
+            return {
+                "document_id": doc.id,
+                "status": "failed",
+                "error": extracted.get("error") or extracted.get("raw") or "AI 分析失败",
+                "extracted": extracted,
+                "matched_case": None,
+                "candidates": [],
+            }
 
     except Exception as e:
         import logging
@@ -272,7 +371,15 @@ async def smart_ingest(
         doc.ai_analysis_status = "failed"
         doc.ai_raw_response = str(e)
         db.commit()
-        return {"document_id": doc.id, "status": "failed", "extracted": {}, "matched_case": None, "candidates": []}
+        error = str(e)
+        return {
+            "document_id": doc.id,
+            "status": "failed",
+            "error": error,
+            "extracted": {"success": False, "error": error},
+            "matched_case": None,
+            "candidates": [],
+        }
 
 
 @router.post("/smart-ingest/confirm")
@@ -365,14 +472,15 @@ async def smart_ingest_async(
 
     doc = models.CaseDocument(
         case_id=None, filename=file.filename, file_path=file_path,
-        file_type=ext, file_size=len(content), ai_analysis_status="pending"
+        file_type=ext, file_size=len(content), ai_analysis_status="pending",
+        ai_progress="上传成功"
     )
     db.add(doc)
     db.commit()
     db.refresh(doc)
 
     # SSE: 通知所有客户端有新任务
-    sse_manager.broadcast("task_changed", {"task_id": doc.id, "action": "created"})
+    sse_manager.broadcast("task_changed", _task_event(doc, action="created"))
 
     import threading
     threading.Thread(
@@ -392,23 +500,23 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
         if not doc: return
 
         doc.ai_analysis_status = "processing"
-        doc.ai_progress = "正在提取文本…"
+        doc.ai_progress = "文本提取中"
         db.commit()
-        sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "processing", "progress": doc.ai_progress})
+        sse_manager.broadcast("task_changed", _task_event(doc))
 
         text = extract_text(file_path, ext)
         if not text.strip():
             doc.ai_analysis_status = "failed"
-            doc.ai_raw_response = "文件内容为空或无法提取文本"
+            doc.ai_raw_response = "文件内容为空或无法提取文本，请重新上传清晰文件或手动关联案件"
             doc.ai_progress = "文本提取失败"
             db.commit()
-            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "failed", "progress": doc.ai_progress})
+            sse_manager.broadcast("task_changed", _task_event(doc, error=_failure_reason(doc.ai_raw_response)))
             _create_analysis_notification(db, doc, "failed")
             return
 
-        doc.ai_progress = f"文本提取完成 ({len(text)} 字符)，正在 AI 分析…"
+        doc.ai_progress = "AI 分析中"
         db.commit()
-        sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "processing", "progress": doc.ai_progress})
+        sse_manager.broadcast("task_changed", _task_event(doc))
 
         result = asyncio_run(analyze_document(text))
 
@@ -433,9 +541,9 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
                 except Exception:
                     pass
             doc.ai_raw_response = result.get("raw", "")
-            doc.ai_progress = "AI 分析完成，正在匹配已有案件…"
+            doc.ai_progress = "匹配案件中"
             db.commit()
-            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "processing", "progress": doc.ai_progress})
+            sse_manager.broadcast("task_changed", _task_event(doc))
 
             # 案件匹配
             active = db.query(models.Case).filter(
@@ -461,16 +569,16 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
                 "reason": match.get("reason", ""),
                 "confidence": match.get("confidence", 0),
             }, ensure_ascii=False)
-            doc.ai_progress = "分析完成"
+            doc.ai_progress = "待确认"
             db.commit()
-            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "completed", "progress": doc.ai_progress})
+            sse_manager.broadcast("task_changed", _task_event(doc))
             _create_analysis_notification(db, doc, "completed")
         else:
             doc.ai_analysis_status = "failed"
-            doc.ai_raw_response = result.get("raw", result.get("error", ""))
+            doc.ai_raw_response = result.get("error") or result.get("raw") or "AI 分析失败，请重新分析或手动关联案件"
             doc.ai_progress = "AI 分析失败"
             db.commit()
-            sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "failed", "progress": doc.ai_progress})
+            sse_manager.broadcast("task_changed", _task_event(doc, error=_failure_reason(doc.ai_raw_response)))
             _create_analysis_notification(db, doc, "failed")
     except Exception as e:
         import traceback
@@ -483,7 +591,7 @@ def _run_smart_ingest(doc_id: int, file_path: str, ext: str):
                 doc.ai_raw_response = err_msg[:2000]  # 截断保存
                 doc.ai_progress = "处理异常"
                 db.commit()
-                sse_manager.broadcast("task_changed", {"task_id": doc_id, "status": "failed", "progress": doc.ai_progress})
+                sse_manager.broadcast("task_changed", _task_event(doc, error=_failure_reason(doc.ai_raw_response)))
                 _create_analysis_notification(db, doc, "failed")
         except Exception as inner_e:
             _log.getLogger("documents").error("Failed to save error: %s", inner_e)
@@ -515,6 +623,26 @@ def _parse_match_preview(match_json: str) -> dict | None:
         return {"has_match": mc is not None, "case_name": mc.get("case_name", "") if mc else ""}
     except Exception:
         return None
+
+
+def _serialize_ingest_task(t: models.CaseDocument) -> dict:
+    stage_key, label, percent = _stage_from_task(t.ai_analysis_status, t.ai_progress)
+    return {
+        "id": t.id, "filename": t.filename, "file_type": t.file_type or "", "file_size": t.file_size or 0,
+        "ai_analysis_status": t.ai_analysis_status,
+        "ai_extracted_stage": t.ai_extracted_stage, "ai_extracted_cause": t.ai_extracted_cause,
+        "ai_extracted_parties": None,
+        "ai_extracted_deadline": str(t.ai_extracted_deadline) if t.ai_extracted_deadline else None,
+        "ai_extracted_court_date": t.ai_extracted_court_date.isoformat() if t.ai_extracted_court_date else None,
+        "ai_raw_response": (t.ai_raw_response or "")[:200] if t.ai_raw_response else None,
+        "ai_match_result": _parse_match_preview(t.ai_match_result),
+        "ai_progress": t.ai_progress or label,
+        "ai_progress_stage": stage_key,
+        "ai_progress_label": label,
+        "ai_progress_percent": percent,
+        "failure_reason": _failure_reason(t.ai_raw_response) if t.ai_analysis_status == "failed" else "",
+        "uploaded_at": _utc_iso(t.uploaded_at),
+    }
 
 
 # ===== 知识搜索 =====

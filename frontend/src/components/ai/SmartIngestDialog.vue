@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { confirmIngest } from '@/api/documents'
+import { confirmIngest, reanalyzeDocument } from '@/api/documents'
 import { getCases } from '@/api/cases'
 import { STAGE_LABEL_MAP } from '@/utils/constants'
 
@@ -21,6 +21,11 @@ const extracted = computed(() => props.result.extracted || {})
 const matched = computed(() => props.result.matched_case)
 const candidates = computed(() => props.result.candidates || [])
 const status = computed(() => props.result.status)
+const failureMessage = computed(() => {
+  if (status.value !== 'failed') return ''
+  const ex = extracted.value || {}
+  return props.result.error || ex.error || ex.raw || '文档内容无法识别，请手动处理'
+})
 
 const hasMatch = computed(() => status.value === 'completed' && matched.value && (matched.value.confidence || 0) > 0.3)
 
@@ -127,6 +132,19 @@ async function doLink(caseId) {
   finally { confirming.value = false }
 }
 
+async function retryAnalysis() {
+  confirming.value = true
+  try {
+    await reanalyzeDocument(props.result.document_id)
+    ElMessage.success('已重新提交分析')
+    emit('close')
+  } catch {
+    ElMessage.error('重新分析失败')
+  } finally {
+    confirming.value = false
+  }
+}
+
 async function doCreateConfirmed() {
   confirming.value = true
   const rf = reviewForm.value
@@ -165,11 +183,24 @@ async function toggleManual() {
   >
     <!-- 失败 -->
     <div v-if="status === 'failed'" class="si-section">
-      <el-result icon="error" title="AI 分析失败" sub-title="文档内容无法识别，请手动处理">
+      <el-result icon="error" title="AI 分析失败" :sub-title="failureMessage">
         <template #extra>
+          <el-button type="primary" :loading="confirming" @click="retryAnalysis">重新分析</el-button>
+          <el-button @click="toggleManual">手动关联案件</el-button>
           <el-button @click="emit('close')">关闭</el-button>
         </template>
       </el-result>
+      <div v-if="manualMode" class="si-section manual-fallback">
+        <h4>手动选择案件</h4>
+        <el-select v-model="manualCaseId" filterable placeholder="搜索案件…" style="width:100%">
+          <el-option v-for="c in allCases" :key="c.id" :label="c.case_name" :value="c.id" />
+        </el-select>
+        <div class="match-actions" style="margin-top:12px">
+          <el-button type="primary" :disabled="!manualCaseId" :loading="confirming" @click="doLink(manualCaseId)">
+            确认归属
+          </el-button>
+        </div>
+      </div>
     </div>
 
     <!-- 审核编辑模式 -->
@@ -388,6 +419,12 @@ async function toggleManual() {
 
 <style scoped>
 .si-section { margin-bottom: 16px; }
+.manual-fallback {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
 
 .section-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;

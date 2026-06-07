@@ -60,6 +60,6 @@ export function getIngestTaskCount(config = {}) {
   return api.get('/documents/ingest-tasks/count', config)
 }
 
-export function getIngestTaskText(taskId) {
-  return api.get(`/documents/ingest-tasks/${taskId}/text`)
+export function getIngestTaskText(taskId, config = {}) {
+  return api.get(`/documents/ingest-tasks/${taskId}/text`, config)
 }

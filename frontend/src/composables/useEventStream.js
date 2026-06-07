@@ -3,6 +3,7 @@ import { ref, readonly } from 'vue'
 // ---- 模块级单例状态 ----
 const notificationVersion = ref(0)
 const taskVersion = ref(0)
+const lastTaskEvent = ref(null)
 const connected = ref(false)
 
 let eventSource = null
@@ -33,8 +34,13 @@ function connect() {
     notificationVersion.value++
   })
 
-  eventSource.addEventListener('task_changed', () => {
+  eventSource.addEventListener('task_changed', (event) => {
     taskVersion.value++
+    try {
+      lastTaskEvent.value = { ...JSON.parse(event.data || '{}'), receivedAt: Date.now() }
+    } catch {
+      lastTaskEvent.value = { receivedAt: Date.now() }
+    }
   })
 
   // 心跳事件仅保活，不处理
@@ -58,6 +64,7 @@ export function useEventStream() {
   return {
     notificationVersion: readonly(notificationVersion),
     taskVersion: readonly(taskVersion),
+    lastTaskEvent: readonly(lastTaskEvent),
     connected: readonly(connected),
     connect,
     disconnect,

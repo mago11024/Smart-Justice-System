@@ -47,6 +47,7 @@ def on_startup():
             for stmt in [
                 "ALTER TABLE cases ADD COLUMN core_summary TEXT DEFAULT ''",
                 "ALTER TABLE notifications ADD COLUMN document_id INTEGER REFERENCES case_documents(id)",
+                "ALTER TABLE notifications ADD COLUMN is_pinned BOOLEAN DEFAULT 0",
                 "ALTER TABLE case_documents ADD COLUMN ai_match_result TEXT",
                 "ALTER TABLE case_documents ADD COLUMN ai_progress TEXT DEFAULT ''",
             ]:

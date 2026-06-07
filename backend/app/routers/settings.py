@@ -102,6 +102,8 @@ def _mask_secrets(config: dict) -> dict:
             d = d.setdefault(key, {})
         if d.get(path[-1], ""):
             d[path[-1]] = MASK
+        elif path == ("paddleocr", "token") and os.getenv("PADDLEOCR_TOKEN"):
+            d[path[-1]] = MASK
     return masked
 
 
@@ -158,7 +160,10 @@ def _sync_env(config: dict):
 
     # PaddleOCR
     po = config.get("paddleocr", {})
-    os.environ["PADDLEOCR_TOKEN"] = po.get("token", "")
+    if po.get("token"):
+        os.environ["PADDLEOCR_TOKEN"] = po["token"]
+    elif "PADDLEOCR_TOKEN" not in os.environ:
+        os.environ["PADDLEOCR_TOKEN"] = ""
 
 
 @router.get("")

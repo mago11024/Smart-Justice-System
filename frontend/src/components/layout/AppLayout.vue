@@ -1,8 +1,8 @@
 <script setup>
 import { ref, provide, onMounted, onBeforeUnmount, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { smartIngest, uploadDocument, confirmIngest } from '@/api/documents'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { smartIngestAsync, uploadDocument, confirmIngest, getSmartIngestResult } from '@/api/documents'
 import { getCase } from '@/api/cases'
 import { STAGE_LABEL_MAP } from '@/utils/constants'
 import AppSidebar from './AppSidebar.vue'
@@ -12,6 +12,7 @@ import SmartIngestDialog from '@/components/ai/SmartIngestDialog.vue'
 import { useEventStream } from '@/composables/useEventStream'
 
 const route = useRoute()
+const router = useRouter()
 
 // 置信度阈值
 const AUTO_LINK_THRESHOLD = 0.85
@@ -25,6 +26,9 @@ const processingStatus = ref('processing') // 'processing' | 'success' | 'error'
 const result = ref(null)
 const showDialog = ref(false)
 const dialogMode = ref('auto') // 'auto' | 'match' | 'create'
+const trackedTaskId = ref(null)
+const handlingTaskCompletion = ref(false)
+let taskPollTimer = null
 
 /* 当前是否在案件详情页 */
 const currentCaseId = computed(() => {
@@ -99,6 +103,7 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   window.removeEventListener('dragover', _onWindowDrag, false)
   window.removeEventListener('drop', _onWindowDrop, false)
+  stopTaskPolling()
   disconnect()
 })
 
@@ -129,7 +134,106 @@ function toggleTheme() {
 initTheme()
 
 /* SSE 实时推送 — 应用级单例生命周期 */
-const { connect, disconnect } = useEventStream()
+const { connect, disconnect, lastTaskEvent } = useEventStream()
+
+watch(lastTaskEvent, (event) => {
+  if (!event || !trackedTaskId.value || event.task_id !== trackedTaskId.value) return
+  if (event.status === 'processing' || event.status === 'pending') {
+    processing.value = true
+    processingStatus.value = 'processing'
+    processingMessage.value = event.progress || 'AI 正在识别文档…'
+    return
+  }
+  if (event.status === 'completed' || event.status === 'failed') {
+    finishTrackedTask(event.status)
+  }
+})
+
+function stopTaskPolling() {
+  if (taskPollTimer) {
+    clearInterval(taskPollTimer)
+    taskPollTimer = null
+  }
+}
+
+function startTaskPolling(taskId) {
+  stopTaskPolling()
+  taskPollTimer = setInterval(async () => {
+    try {
+      const res = await getSmartIngestResult(taskId)
+      const status = res.data?.status
+      if (status === 'completed' || status === 'failed') {
+        finishTrackedTask(status, res.data)
+      }
+    } catch {
+      // SSE 仍会继续兜底；短暂网络错误不打断当前进度条。
+    }
+  }, 3000)
+}
+
+async function finishTrackedTask(status, knownResult = null) {
+  if (!trackedTaskId.value || handlingTaskCompletion.value) return
+  handlingTaskCompletion.value = true
+  stopTaskPolling()
+
+  const taskId = trackedTaskId.value
+  trackedTaskId.value = null
+
+  try {
+    if (status === 'completed') {
+      processingStatus.value = 'success'
+      processingMessage.value = 'AI 识别完成'
+
+      const data = knownResult || (await getSmartIngestResult(taskId)).data
+      const matchedCase = data.matched_case
+      const confidence = matchedCase?.confidence || 0
+
+      if (matchedCase && confidence >= AUTO_LINK_THRESHOLD) {
+        try {
+          await confirmIngest(taskId, 'link', matchedCase.id)
+          processingMessage.value = `已自动关联到案件「${matchedCase.case_name}」`
+          window.dispatchEvent(new CustomEvent('smart-ingest-confirmed'))
+          window.dispatchEvent(new CustomEvent('highlight-case', { detail: { caseId: matchedCase.id } }))
+          await ElMessageBox.alert(
+            `AI 识别已完成，并已自动关联到案件「${matchedCase.case_name}」。`,
+            '任务完成',
+            { type: 'success', confirmButtonText: '知道了' }
+          ).catch(() => {})
+        } catch {
+          processingStatus.value = 'error'
+          processingMessage.value = '自动关联失败，请在任务中心手动处理'
+          await ElMessageBox.alert('AI 识别已完成，但自动关联失败，请在任务中心手动处理。', '任务完成', {
+            type: 'warning',
+            confirmButtonText: '知道了',
+          }).catch(() => {})
+        }
+      } else {
+        result.value = data
+        dialogMode.value = matchedCase && confidence >= MATCH_SUGGEST_THRESHOLD ? 'match' : 'create'
+        try {
+          await ElMessageBox.alert('AI 已完成文件识别，请查看识别结果并确认案件归属。', '任务完成', {
+            type: 'success',
+            confirmButtonText: '查看结果',
+          })
+          processing.value = false
+          router.push(`/tasks/${taskId}/text`)
+        } catch {}
+      }
+
+      setTimeout(() => { processing.value = false }, 1200)
+    } else {
+      processingStatus.value = 'error'
+      processingMessage.value = 'AI 识别失败'
+      setTimeout(() => { processing.value = false }, 2500)
+      ElMessageBox.alert('AI 识别失败，请在任务中心查看失败原因并重试。', '任务失败', {
+        type: 'error',
+        confirmButtonText: '知道了',
+      }).catch(() => {})
+    }
+  } finally {
+    handlingTaskCompletion.value = false
+  }
+}
 
 function triggerFilePick() {
   fileInput.value?.click()
@@ -171,7 +275,7 @@ async function processFile(file) {
   if (file.size > 20 * 1024 * 1024) { ElMessage.error('文件不超过 20MB'); return }
 
   // 防重复提交
-  if (processing.value) {
+  if (processing.value || trackedTaskId.value) {
     ElMessage.warning('请等待当前文件处理完成')
     return
   }
@@ -202,50 +306,17 @@ async function processFile(file) {
     processingMessage.value = '正在上传文档并提取文本…'
     processingStatus.value = 'processing'
     try {
-      const res = await smartIngest(file)
-      const data = res.data
-
-      if (data.status === 'failed') {
-        processing.value = false
-        result.value = data
-        dialogMode.value = 'auto'
-        showDialog.value = true
-        return
-      }
-
-      const matchedCase = data.matched_case
-      const confidence = matchedCase?.confidence || 0
-
-      if (matchedCase && confidence >= AUTO_LINK_THRESHOLD) {
-        // 高置信度：自动关联
-        processingMessage.value = '分析完成，正在自动关联…'
-        try {
-          await confirmIngest(data.document_id, 'link', matchedCase.id)
-          processingStatus.value = 'success'
-          processingMessage.value = `已自动关联到案件「${matchedCase.case_name}」`
-          ElMessage.success(`已自动关联到案件「${matchedCase.case_name}」（匹配度 ${(confidence * 100).toFixed(0)}%）`)
-          window.dispatchEvent(new CustomEvent('smart-ingest-confirmed'))
-          window.dispatchEvent(new CustomEvent('highlight-case', { detail: { caseId: matchedCase.id } }))
-        } catch {
-          processingStatus.value = 'error'
-          processingMessage.value = '关联失败，请在任务中心手动处理'
-        }
-        setTimeout(() => { processing.value = false }, 2500)
-      } else if (matchedCase && confidence >= MATCH_SUGGEST_THRESHOLD) {
-        // 中置信度：弹窗展示匹配高亮
-        processing.value = false
-        result.value = data
-        dialogMode.value = 'match'
-        showDialog.value = true
-      } else {
-        // 低/无匹配：弹窗创建新案件
-        processing.value = false
-        result.value = data
-        dialogMode.value = 'create'
-        showDialog.value = true
-      }
+      const res = await smartIngestAsync(file)
+      trackedTaskId.value = res.data?.document_id || null
+      if (!trackedTaskId.value) throw new Error('missing task id')
+      processingMessage.value = '文件已上传，AI 正在识别文档…'
+      ElMessage.success('文件已上传，AI 正在识别文档…')
+      window.dispatchEvent(new CustomEvent('ingest-task-created', { detail: { taskId: trackedTaskId.value } }))
+      if (trackedTaskId.value) startTaskPolling(trackedTaskId.value)
     } catch (e) {
       processing.value = false
+      trackedTaskId.value = null
+      stopTaskPolling()
       if (e?.code === 'ECONNABORTED' || e?.message?.includes('timeout')) {
         ElMessage.warning('AI 分析超时，已转为后台处理，可在任务中心查看结果')
       } else {

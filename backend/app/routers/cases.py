@@ -34,6 +34,16 @@ def create(data: CaseCreate, db: Session = Depends(get_db)):
     return case_service.create_case(db, data.model_dump())
 
 
+@router.get("/search/knowledge")
+@router.get("/knowledge-search")
+def knowledge_search(
+    q: str = Query(""),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    return case_service.search_existing_cases(db, q, limit)
+
+
 @router.get("/{case_id}", response_model=CaseDetailResponse)
 def get_one(case_id: int, db: Session = Depends(get_db)):
     cases = case_service.get_cases(db)

@@ -5,6 +5,10 @@ export function getCases(params = {}) {
   return api.get('/cases', { params })
 }
 
+export function searchKnowledgeCases(query, limit = 50) {
+  return api.get('/cases/search/knowledge', { params: { q: query, limit } })
+}
+
 export function getCase(id) {
   return api.get(`/cases/${id}`)
 }

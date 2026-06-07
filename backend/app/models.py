@@ -98,6 +98,7 @@ class Notification(Base):
     type = Column(String(50), nullable=False)
     message = Column(String(500), nullable=False)
     is_read = Column(Boolean, default=False)
+    is_pinned = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     case = relationship("Case", back_populates="notifications")

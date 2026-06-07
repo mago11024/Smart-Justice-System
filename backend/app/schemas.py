@@ -139,6 +139,7 @@ class NotificationResponse(BaseModel):
     type: str
     message: str
     is_read: bool
+    is_pinned: bool = False
     created_at: datetime
 
     class Config:
@@ -148,7 +149,7 @@ class NotificationResponse(BaseModel):
 # ===== 文档 =====
 class DocumentResponse(BaseModel):
     id: int
-    case_id: int
+    case_id: Optional[int] = None
     filename: str
     file_type: str
     file_size: int

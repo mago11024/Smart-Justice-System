@@ -17,7 +17,7 @@ def list_notifications(
     q = db.query(models.Notification)
     if unread_only:
         q = q.filter(models.Notification.is_read == False)
-    items = q.order_by(models.Notification.created_at.desc()).limit(50).all()
+    items = q.order_by(models.Notification.is_pinned.desc(), models.Notification.created_at.desc()).limit(50).all()
     return [
         {
             "id": n.id, "case_id": n.case_id,
@@ -26,7 +26,8 @@ def list_notifications(
             "document_id": n.document_id,
             "document_filename": n.document.filename if n.document else "",
             "type": n.type, "message": n.message,
-            "is_read": n.is_read, "created_at": n.created_at
+            "is_read": n.is_read, "is_pinned": n.is_pinned,
+            "created_at": n.created_at
         }
         for n in items
     ]
@@ -37,6 +38,36 @@ def mark_read(nid: int, db: Session = Depends(get_db)):
     n = db.query(models.Notification).filter(models.Notification.id == nid).first()
     if n:
         n.is_read = True
+        db.commit()
+        sse_manager.broadcast("notification_changed", {})
+    return {"ok": True}
+
+
+@router.put("/{nid}/unread")
+def mark_unread(nid: int, db: Session = Depends(get_db)):
+    n = db.query(models.Notification).filter(models.Notification.id == nid).first()
+    if n:
+        n.is_read = False
+        db.commit()
+        sse_manager.broadcast("notification_changed", {})
+    return {"ok": True}
+
+
+@router.put("/{nid}/pin")
+def pin_notification(nid: int, db: Session = Depends(get_db)):
+    n = db.query(models.Notification).filter(models.Notification.id == nid).first()
+    if n:
+        n.is_pinned = True
+        db.commit()
+        sse_manager.broadcast("notification_changed", {})
+    return {"ok": True}
+
+
+@router.put("/{nid}/unpin")
+def unpin_notification(nid: int, db: Session = Depends(get_db)):
+    n = db.query(models.Notification).filter(models.Notification.id == nid).first()
+    if n:
+        n.is_pinned = False
         db.commit()
         sse_manager.broadcast("notification_changed", {})
     return {"ok": True}

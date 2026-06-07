@@ -42,6 +42,12 @@ const routes = [
         meta: { title: '任务中心' },
       },
       {
+        path: '/tasks/:id/text',
+        name: 'IngestTaskText',
+        component: () => import('@/views/IngestTaskTextView.vue'),
+        meta: { title: '文本查看' },
+      },
+      {
         path: '/search',
         name: 'KnowledgeSearch',
         component: () => import('@/views/KnowledgeSearchView.vue'),

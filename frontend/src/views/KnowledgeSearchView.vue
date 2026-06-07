@@ -2,36 +2,53 @@
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search } from '@element-plus/icons-vue'
-import { searchDocuments } from '@/api/documents'
-import { getCases } from '@/api/cases'
+import { getCases, searchKnowledgeCases } from '@/api/cases'
 
 const router = useRouter()
 const query = ref('')
 const loading = ref(false)
-const activeTab = ref('docs')
-const docResults = ref([])
 const caseResults = ref([])
 
 let debounceTimer = null
+
+function fallbackQueries(value) {
+  const normalized = value.normalize('NFKC')
+  const compact = normalized.replace(/[\s()[\]{}<>,.，。:：;；、/\\\-_|\uFF08\uFF09]/g, '')
+  const numberParts = [...normalized.matchAll(/\d{4,}/g)].map((match) => match[0]).reverse()
+  return [...new Set([value, normalized, compact, ...numberParts].filter(Boolean))]
+}
+
+async function fallbackSearchCases(value) {
+  const queries = fallbackQueries(value)
+  for (const item of queries) {
+    const res = await getCases({ search: item, view: 'flat' })
+    const data = res.data || []
+    if (data.length > 0) return data
+  }
+  return []
+}
 
 function doSearch() {
   if (debounceTimer) clearTimeout(debounceTimer)
   debounceTimer = setTimeout(async () => {
     const q = query.value.trim()
     if (!q) {
-      docResults.value = []
       caseResults.value = []
       return
     }
     loading.value = true
     try {
-      const [docRes, caseRes] = await Promise.all([
-        searchDocuments(q),
-        getCases({ search: q, view: 'flat' }),
-      ])
-      docResults.value = docRes.data || []
-      caseResults.value = caseRes.data || []
-    } catch {}
+      const res = await searchKnowledgeCases(q)
+      caseResults.value = res.data || []
+    } catch {
+      const fallback = await fallbackSearchCases(q)
+      caseResults.value = fallback.map((item) => ({
+        ...item,
+        matched_fields: ['案件信息'],
+        document_matches: [],
+        snippet: '',
+      }))
+    }
     finally { loading.value = false }
   }, 300)
 }
@@ -40,13 +57,6 @@ watch(query, doSearch)
 
 function goCase(id) {
   router.push(`/case/${id}`)
-}
-
-function formatSize(bytes) {
-  if (!bytes) return ''
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 function formatDate(d) {
@@ -67,7 +77,7 @@ const STAGE_MAP = {
   <div>
     <div class="header">
       <h1>知识搜索</h1>
-      <p>搜索全所代理词、判决书、法律意见书及案件信息</p>
+      <p>检索现有案件的当事人、案号、案由和文书内容</p>
     </div>
 
     <div class="search-box">
@@ -88,37 +98,37 @@ const STAGE_MAP = {
     </div>
 
     <div v-else v-loading="loading" class="results-area">
-      <el-tabs v-model="activeTab">
-        <el-tab-pane :label="`案件 (${caseResults.length})`" name="cases">
-          <div v-if="caseResults.length === 0" class="no-results">无匹配案件</div>
-          <div v-for="c in caseResults" :key="c.id" class="result-card case" @click="goCase(c.id)">
-            <div class="rc-hd">
-              <span class="rc-name">{{ c.case_name }}</span>
-              <el-tag size="small">{{ STAGE_MAP[c.stage] || c.stage }}</el-tag>
-            </div>
-            <div class="rc-body">
-              <span v-if="c.case_number" class="rc-num">{{ c.case_number }}</span>
-              <span v-if="c.plaintiff || c.defendant">{{ c.plaintiff || '?' }} → {{ c.defendant || '?' }}</span>
-              <span v-if="c.cause_of_action" class="rc-cause">{{ c.cause_of_action }}</span>
-            </div>
+      <div class="result-meta">找到 {{ caseResults.length }} 件现有案件</div>
+      <div v-if="caseResults.length === 0" class="no-results">无匹配案件</div>
+      <div v-for="c in caseResults" :key="c.id" class="result-card case" @click="goCase(c.id)">
+        <div class="rc-hd">
+          <span class="rc-name">{{ c.case_name }}</span>
+          <div class="rc-tags">
+            <el-tag
+              v-for="field in c.matched_fields"
+              :key="field"
+              size="small"
+              type="success"
+            >
+              {{ field }}
+            </el-tag>
+            <el-tag size="small">{{ STAGE_MAP[c.stage] || c.stage }}</el-tag>
           </div>
-        </el-tab-pane>
-
-        <el-tab-pane :label="`文书 (${docResults.length})`" name="docs">
-          <div v-if="docResults.length === 0" class="no-results">无匹配文书</div>
-          <div v-for="d in docResults" :key="d.id" class="result-card doc" @click="goCase(d.case_id)">
-            <div class="rc-hd">
-              <span class="rc-name">{{ d.filename }}</span>
-              <el-tag size="small" type="info">{{ d.file_type?.toUpperCase() }}</el-tag>
-            </div>
-            <div class="rc-body">
-              <span>{{ d.case_name }}</span>
-              <span class="rc-meta">{{ formatSize(d.file_size) }} · {{ formatDate(d.uploaded_at) }}</span>
-            </div>
-            <div v-if="d.snippet" class="rc-snippet">{{ d.snippet }}…</div>
+        </div>
+        <div class="rc-body">
+          <span v-if="c.case_number" class="rc-num">{{ c.case_number }}</span>
+          <span v-if="c.plaintiff || c.defendant">{{ c.plaintiff || '?' }} → {{ c.defendant || '?' }}</span>
+          <span v-if="c.cause_of_action" class="rc-cause">{{ c.cause_of_action }}</span>
+        </div>
+        <div v-if="c.snippet" class="rc-snippet">{{ c.snippet }}</div>
+        <div v-if="c.document_matches?.length" class="doc-matches">
+          <div v-for="d in c.document_matches" :key="d.id" class="doc-line">
+            <span class="doc-name">{{ d.filename }}</span>
+            <span class="doc-meta">{{ d.file_type?.toUpperCase() }} · {{ formatDate(d.uploaded_at) }}</span>
+            <span v-if="d.snippet" class="doc-snippet">{{ d.snippet }}</span>
           </div>
-        </el-tab-pane>
-      </el-tabs>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -140,7 +150,8 @@ const STAGE_MAP = {
 .empty-hint p { font-size: 16px; font-weight: 500; }
 .empty-hint .sub { font-size: 13px; margin-top: 6px; }
 
-.results-area { max-width: 860px; }
+.results-area { max-width: 920px; }
+.result-meta { color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; }
 .no-results { text-align: center; padding: 40px 0; color: var(--text-tertiary); font-size: 14px; }
 
 .result-card {
@@ -149,14 +160,32 @@ const STAGE_MAP = {
 }
 .result-card:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
 html.dark .result-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
-.rc-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rc-hd { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
 .rc-name { font-size: 14px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rc-body { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text-secondary); }
+.rc-tags { flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; max-width: 360px; }
+.rc-body { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; font-size: 12px; color: var(--text-secondary); }
 .rc-num { font-family: "SF Mono","Consolas",monospace; color: var(--text-tertiary); }
 .rc-cause { color: var(--accent); }
-.rc-meta { color: var(--text-tertiary); }
 .rc-snippet {
   margin-top: 10px; padding: 10px 12px; background: var(--bg); border-radius: var(--radius-sm);
-  font-size: 12px; color: var(--text-secondary); line-height: 1.6; max-height: 60px; overflow: hidden;
+  font-size: 12px; color: var(--text-secondary); line-height: 1.6; max-height: 72px; overflow: hidden;
+}
+.doc-matches {
+  margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.doc-line {
+  display: grid; grid-template-columns: minmax(140px, 220px) minmax(90px, 140px) 1fr;
+  gap: 10px; align-items: baseline; font-size: 12px;
+}
+.doc-name { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-meta { color: var(--text-tertiary); }
+.doc-snippet { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .rc-hd { flex-direction: column; }
+  .rc-tags { justify-content: flex-start; max-width: 100%; }
+  .doc-line { grid-template-columns: 1fr; gap: 4px; }
+  .doc-snippet { white-space: normal; }
 }
 </style>
